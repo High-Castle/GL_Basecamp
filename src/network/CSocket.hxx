@@ -74,8 +74,17 @@ namespace network
             
             private :
                 struct CImplementation ;
-                std::unique_ptr< CImplementation > impl_ ;  
+                
+                struct IImplementation
+                {
+                    virtual ~ IImplementation () = default ;
+                } ;
+                
+                std::unique_ptr< IImplementation > impl_ ;  
                 explicit CSocket ( std::unique_ptr< CImplementation > ) noexcept ;
+                
+                CImplementation * impl () ; 
+                const CImplementation * impl () const ; 
         } ;
         
         struct ISocketOption
@@ -84,7 +93,16 @@ namespace network
             
             virtual ~ ISocketOption () = default ;
             protected :
-               struct IOptionParams ;
+            
+               struct COptionParams ;
+               
+               struct IOptionParams
+               {
+                   COptionParams * get () ; 
+                   const COptionParams * get () const ;
+                   virtual ~ IOptionParams() = default ; 
+               } ;
+               
                virtual std::unique_ptr< IOptionParams > parameters () const = 0 ;
         } ;
         
@@ -97,4 +115,11 @@ namespace network
         } ;
     } // ip
 } // network
+
+// ( http://stackoverflow.com/questions/27609522/extern-template-for-template-parametrized-with-incompete-type )
+// inlined functions templates such as std::unique_ptr< ... >::~std::unique_ptr< ... > will be instantiated 
+// even if i do prevent it with `extern template`.
+// extern template class std::unique_ptr< network::ip::CSocket::CImplementation > ;
+// extern template class std::unique_ptr< network::ip::ISocketOption::COptionParams > ;
+// 
 #endif // NETWORK_IP_CSOCKET_HXX

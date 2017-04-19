@@ -135,7 +135,8 @@ std::uint16_t network::ntohs( std::uint16_t s )
     return ::ntohs( s ) ;
 }
 
-struct network::ip::CSocket::CImplementation
+struct network::ip::CSocket::CImplementation 
+                : network::ip::CSocket::IImplementation
 {  
     sock_handle_type sock_ ;
     
@@ -152,17 +153,27 @@ struct network::ip::CSocket::CImplementation
     } addr_ ;
 } ;
 
+network::ip::CSocket::CImplementation * network::ip::CSocket::impl ()
+{
+    return static_cast< CImplementation * >( impl_.get() ) ;
+}
+
+const network::ip::CSocket::CImplementation * network::ip::CSocket::impl () const
+{
+    return static_cast< const CImplementation * >( impl_.get() ) ;
+}
+
 namespace network { 
 namespace ip {
 
     CSocket::CSocket ( EAddressFamily addr_family , ESocketType type , EProtocol proto ) 
     {
         impl_ = std::unique_ptr< CImplementation >{ new CImplementation } ;
-        impl_ -> sock_ = ::socket( AF_translate( addr_family ) , TYPE_translate( type ) , PROTO_translate( proto ) ) ;
+        impl() -> sock_ = ::socket( AF_translate( addr_family ) , TYPE_translate( type ) , PROTO_translate( proto ) ) ;
         
-        if ( impl_ -> sock_ == - 1 ) throw CSocketInitException( "Socket Init Error" ) ;
+        if ( impl() -> sock_ == - 1 ) throw CSocketInitException( "Socket Init Error" ) ;
         
-        impl_ -> info_ = CImplementation::SocketInfo{ addr_family , type , proto } ;
+        impl() -> info_ = CImplementation::SocketInfo{ addr_family , type , proto } ;
     }
     
     CSocket::CSocket ( std::unique_ptr< CImplementation > impl_ptr ) noexcept
@@ -173,55 +184,55 @@ namespace ip {
     CSocket:: ~ CSocket () 
     { 
         if ( is_empty() ) return ;
-        if ( ::close( impl_ -> sock_ ) )
+        if ( ::close( impl() -> sock_ ) )
             std::cerr << __func__ << " : " << "attempt to close socket is not successful" ;
     }    
 
     bool CSocket::is_empty () const noexcept 
     { 
-        return ! impl_ ; 
+        return ! impl() ; 
     }
 
     bool CSocket::is_connected () const noexcept 
     { 
         if ( is_empty() ) return false ;
-        return ! impl_ -> addr_.connected_.empty() ;
+        return ! impl() -> addr_.connected_.empty() ;
     }
 
     bool CSocket::is_bound () const noexcept 
     { 
         if ( is_empty() ) return false ;
-        return ! impl_ -> addr_.binded_.empty() ;
+        return ! impl() -> addr_.binded_.empty() ;
     }
                             
     CIPAddress CSocket::remote_endpoint () const 
     { 
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
-        return impl_ -> addr_.connected_ ;
+        return impl() -> addr_.connected_ ;
     }
 
     CIPAddress CSocket::bound_address () const  
     { 
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
-        return impl_ -> addr_.binded_ ;
+        return impl() -> addr_.binded_ ;
     }
 
     EProtocol CSocket::protocol () const 
     { 
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
-        return impl_ -> info_.protocol_ ;
+        return impl() -> info_.protocol_ ;
     }
 
     EAddressFamily CSocket::domain () const
     { 
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
-        return impl_ -> info_.addr_family_ ;
+        return impl() -> info_.addr_family_ ;
     }
 
     ESocketType CSocket::type () const
     { 
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
-        return impl_ -> info_.socket_type_ ;
+        return impl() -> info_.socket_type_ ;
     }            
 
     void CSocket::listen ( std::size_t queue_length )
@@ -232,10 +243,10 @@ namespace ip {
         if ( is_connected() )
             throw CSocketLogicException( "Logic Error, attempt to listen with already connected socket" ) ;
         
-        if ( impl_ -> info_.socket_type_ == ESocketType::DATAGRAM ) 
+        if ( impl() -> info_.socket_type_ == ESocketType::DATAGRAM ) 
             throw CSocketLogicException( "Logic Error, attempt to listen with datagram socket" ) ;
         
-        if ( ::listen( impl_ -> sock_ , queue_length ) == - 1 ) 
+        if ( ::listen( impl() -> sock_ , queue_length ) == - 1 ) 
             throw CSocketListenException( "Listen Error" ) ;
     }
     
@@ -245,7 +256,7 @@ namespace ip {
         if ( ! is_connected() ) 
             throw CSocketLogicException( "Logic Error on write, socket is not connected" ) ;
         
-        ::ssize_t bytes_written = ::write( impl_ -> sock_ , src , sz ) ;
+        ::ssize_t bytes_written = ::write( impl() -> sock_ , src , sz ) ;
         
         if ( bytes_written == - 1 ) 
             throw CSocketWriteException( "Write Error" ) ;
@@ -258,7 +269,7 @@ namespace ip {
         if ( ! is_connected() ) 
             throw CSocketLogicException( "Logic Error on read, socket is not connected" )  ;
         
-        ::ssize_t bytes_read = ::read( impl_ -> sock_ , dst , sz ) ;
+        ::ssize_t bytes_read = ::read( impl() -> sock_ , dst , sz ) ;
         
         if ( bytes_read == - 1 ) 
             throw CSocketWriteException( "Read Error" ) ;
@@ -289,8 +300,8 @@ namespace ip {
         
          = get_address_str ( )
         
-        //impl_ -> addr_.connected_ = CIPAddress( impl -> info_.addr_family_ , addr_str , port ) ;
-        //impl_ -> addr_.binded_ = CIPAddress( impl -> info_.addr_family_ , addr_str , port ) ; // ephemeral port
+        //impl() -> addr_.connected_ = CIPAddress( impl -> info_.addr_family_ , addr_str , port ) ;
+        //impl() -> addr_.binded_ = CIPAddress( impl -> info_.addr_family_ , addr_str , port ) ; // ephemeral port
     }
     
     
