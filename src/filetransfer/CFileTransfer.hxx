@@ -1,3 +1,9 @@
+#include <iostream>
+#include <string>
+#include <cintdef>
+
+#include "network/CSocket.hxx"
+
 namespace transfer_protocol
 {
 /* Inteded to work with UDP, optionally with TCP / SEQPACK ( then order_number doesn't play ) */
@@ -31,7 +37,7 @@ namespace transfer_protocol
         static send( std::istream& , const std::string& addr , network::ip::port_type port ,
 		      std::size_t file_size , std::uint8_t split_percent ) ;
     
-        static recieve( std::ostream& ,  , port ) ;
+        static recieve( std::ostream& ,   , network::ip::port_type port ) ;
         
         public :
             CFileTransfer() ;
