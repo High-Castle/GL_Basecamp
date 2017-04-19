@@ -1,6 +1,6 @@
 #include <iostream>
 #include <string>
-#include <cintdef>
+#include <cstdint>
 
 #include "network/CSocket.hxx"
 

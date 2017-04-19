@@ -1,7 +1,8 @@
 // POSIX implementation file
 #include <iostream>
 
-#include "CSocket.cxx"
+#include "CSocket.hxx"
+#include "CIPAddress.hxx"
 
 #include <cassert>
 
