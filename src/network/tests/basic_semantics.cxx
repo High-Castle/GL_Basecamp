@@ -19,7 +19,8 @@ int main ()
     try 
     {
         //auto sock2 = std::move( sock ) ;
-        sock.connect( "0.0.0.0" , 8082 ) ;
+        sock.connect( "0.0.0.0" , 8080 ) ;
+        sock.write( "ip::CSocket" ) ;
         std::cout << sock.bound_address().address() << " " << sock.bound_address().port() << "\n" ;
     }
     catch ( const ip::CSocketException& e )

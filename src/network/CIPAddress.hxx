@@ -24,20 +24,39 @@ namespace network
         
         struct CIPAddress final
         {
-            CIPAddress () : is_empty_( true ) { } ;
+            CIPAddress ()  
+            { 
+                addr_[ 0 ] = '\0' ;
+            } ;
             
             CIPAddress ( EAddressFamily family , const std::string& addr_str , port_type port ) noexcept
-                : port_( port ) , family_( family ) , is_empty_( false )
+                : port_( port ) , family_( family )
             { 
-                // todo : check address manually
-                std::strcpy( addr_ , addr_str.c_str() ) ;
+                // todo : check address manually  
+                addr_[ 0 ] = '\0' ;
+                if ( addr_str.length () <= IP_ADDRESS_STRING_MAX_LEN )
+                    std::strcpy( addr_ , addr_str.c_str() ) ;
+            }
+            
+            CIPAddress ( const CIPAddress& adr ) noexcept
+                : port_( adr.port_ ) ,
+                  family_( adr.family_ )
+            {
+                std::strcpy( addr_ , adr.addr_ ) ;
+            }
+            
+            CIPAddress& operator = ( const CIPAddress& adr ) noexcept
+            {
+                port_ = adr.port_ ;
+                family_ = adr.family_ ;
+                std::strcpy( addr_ , adr.addr_ ) ;
             }
             
             std::string    address () const { return addr_ ; } 
             port_type      port    () const noexcept { return port_   ; } // port in host byte order
             EAddressFamily family  () const noexcept { return family_ ; } 
-            bool           empty   () const noexcept { return is_empty_ ; }
-            void           release () noexcept { is_empty_ = true ; }
+            bool           empty   () const noexcept { return addr_[ 0 ] == '\0' ; }
+            void           release () noexcept { addr_[ 0 ] = '\0' ; }
             
             bool is_valid_string() const noexcept
             {
@@ -46,19 +65,16 @@ namespace network
                 return false ;
             }
             
-            private :
-                            
-                port_type      port_     ; // in host byte order
+            private :                            
+                port_type      port_     ; 
                 EAddressFamily family_   ; 
-                std::uint8_t   is_empty_ ;
-                
                 char addr_[ IP_ADDRESS_STRING_MAX_LEN + 1 ] ; // 
-            
-            friend class CSocket ; // sad, but true, todo 
+                
+                
+            friend class CSocket ; // sad, but true, todo it ( used in both address getters in CSocket )
             
             friend bool operator == ( const CIPAddress& op0 , const CIPAddress& op1 ) 
-            {
-                if ( op0.empty() || op1.empty() ) return false ; 
+            { 
                 if ( op0.family_ != op1.family_ || op0.port_ != op1.port_ ) return false ;
                 return std::strcmp( op0.addr_ , op1.addr_ ) == 0 ;
             }

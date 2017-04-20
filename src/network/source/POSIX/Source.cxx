@@ -109,7 +109,7 @@ std::uint16_t network::ntohs( std::uint16_t s )
 }
 
 struct network::ip::CSocket::CImplementation 
-                : network::ip::CSocket::IImplementation
+                : network::ip::CSocket::ImplementationBase
 {  
     CImplementation () : is_connected_{ false } , is_bound_{ false }
     { 
@@ -148,7 +148,7 @@ namespace ip {
         impl() -> info_ = CImplementation::SocketInfo{ addr_family , type , proto } ;
     }
     
-    CSocket::CSocket ( std::unique_ptr< CImplementation > impl_ptr ) noexcept
+    CSocket::CSocket ( std::unique_ptr< ImplementationBase > impl_ptr ) noexcept
         : impl_( std::move( impl_ptr ) )
         {
         }
@@ -185,12 +185,11 @@ namespace ip {
         ::socklen_t addrlen = sizeof addr ;
         
         if ( ::getpeername( impl() -> sock_ , ( ::sockaddr * ) &addr ,  &addrlen ) == - 1 ) return {} ;
-        CIPAddress peer_addr ;
+        CIPAddress peer_addr ; // will be removed in next updates
         
         if ( ! get_address( ( ::sockaddr * ) &addr , peer_addr.addr_ , &peer_addr.port_ , &peer_addr.family_ ) ) 
             return {} ;
-        
-        peer_addr.is_empty_ = false ;
+
         return peer_addr ;
     }
 
@@ -203,12 +202,11 @@ namespace ip {
         ::socklen_t addrlen = sizeof addr ;
         
         if ( ::getsockname( impl() -> sock_ , ( ::sockaddr * ) &addr ,  &addrlen ) == - 1 ) return {} ;
-        CIPAddress bound_addr ;
+        CIPAddress bound_addr ; // will be removed in next updates
         
         if ( ! get_address( ( ::sockaddr * ) &addr , bound_addr.addr_ , &bound_addr.port_ , &bound_addr.family_ ) ) 
             return {} ;
         
-        bound_addr.is_empty_ = false ;
         return bound_addr ;
     }
 

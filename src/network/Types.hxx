@@ -1,12 +1,13 @@
 #ifndef NETWORK_IP_TYPES_HXX
 #define NETWORK_IP_TYPES_HXX
 
+#include <cstddef>
 
 namespace network 
 {
     namespace ip
     {   
-        enum
+        enum : std::size_t
         {
             IPv4_ADDRESS_LEN = 4  ,
             IPv6_ADDRESS_LEN = 16 ,

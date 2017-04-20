@@ -77,13 +77,13 @@ namespace network
             private :
                 struct CImplementation ;
                 
-                struct IImplementation
+                struct ImplementationBase // i will somehow cleanup this shame in further updates.
                 {
-                    virtual ~ IImplementation () = default ;
+                    virtual ~ ImplementationBase () = default ;
                 } ;
                 
-                std::unique_ptr< IImplementation > impl_ ;  
-                explicit CSocket ( std::unique_ptr< CImplementation > ) noexcept ;
+                std::unique_ptr< ImplementationBase > impl_ ;  
+                explicit CSocket ( std::unique_ptr< ImplementationBase > ) noexcept ;
                 
                 CImplementation * impl () ; 
                 const CImplementation * impl () const ; 
@@ -98,21 +98,21 @@ namespace network
             
                struct COptionParams ;
                
-               struct IOptionParams
+               struct OptionParamsBase
                {
                    COptionParams * get () ; 
                    const COptionParams * get () const ;
-                   virtual ~ IOptionParams() = default ; 
+                   virtual ~ OptionParamsBase() = default ; 
                } ;
                
-               virtual std::unique_ptr< IOptionParams > parameters () const = 0 ;
+               virtual std::unique_ptr< OptionParamsBase > parameters () const = 0 ;
         } ;
         
         struct CReuseAddress final : ISocketOption
         {
             CReuseAddress( bool ) ; 
             private :
-               std::unique_ptr< IOptionParams > parameters () const override ;
+               std::unique_ptr< OptionParamsBase > parameters () const override ;
                bool value_ ; 
         } ;
     } // ip
