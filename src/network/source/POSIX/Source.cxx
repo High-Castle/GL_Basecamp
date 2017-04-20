@@ -157,7 +157,7 @@ namespace ip {
     { 
         if ( is_empty() ) return ;
         if ( ::close( impl() -> sock_ ) )
-            std::cerr << __func__ << " : " << "attempt to close socket is not successful" ;
+            std::cerr << "cerr : " << __func__ << " : " << "attempt to close socket is not successful" ;
     }    
 
     bool CSocket::is_empty () const noexcept 
@@ -181,15 +181,21 @@ namespace ip {
     { 
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
         
-        ip_address addr ;
+        ip_address addr {} ;   
         ::socklen_t addrlen = sizeof addr ;
         
-        if ( ::getpeername( impl() -> sock_ , ( ::sockaddr * ) &addr ,  &addrlen ) == - 1 ) return {} ;
+        if ( ::getpeername( impl() -> sock_ , ( ::sockaddr * ) &addr ,  &addrlen ) == - 1 )
+        {
+            std::cerr << "cerr : " << __func__ << " : " << "getpeername() failed" ;
+            return {} ;
+        }
         CIPAddress peer_addr ; // will be removed in next updates
         
         if ( ! get_address( ( ::sockaddr * ) &addr , peer_addr.addr_ , &peer_addr.port_ , &peer_addr.family_ ) ) 
+        {
+            std::cerr << "cerr : " << __func__ << " : " << "problems on getting address" ;
             return {} ;
-
+        }
         return peer_addr ;
     }
 
@@ -197,16 +203,21 @@ namespace ip {
     { 
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
 
-        
-        ip_address addr ;
+        ip_address addr {} ;
         ::socklen_t addrlen = sizeof addr ;
         
-        if ( ::getsockname( impl() -> sock_ , ( ::sockaddr * ) &addr ,  &addrlen ) == - 1 ) return {} ;
+        if ( ::getsockname( impl() -> sock_ , ( ::sockaddr * ) &addr ,  &addrlen ) == - 1 )
+        {
+            std::cerr << "cerr : " << __func__ << " : " << "getsockname() failed" ;
+            return {} ;
+        }
         CIPAddress bound_addr ; // will be removed in next updates
         
         if ( ! get_address( ( ::sockaddr * ) &addr , bound_addr.addr_ , &bound_addr.port_ , &bound_addr.family_ ) ) 
+        {
+            std::cerr << "cerr : " << __func__ << " : " << "problems on getting address" ;
             return {} ;
-        
+        }
         return bound_addr ;
     }
 
@@ -288,7 +299,8 @@ namespace ip {
         if ( ::connect( impl() -> sock_ , ( ::sockaddr * ) &addr , sizeof( ip_address ) ) == - 1 ) 
             throw CSocketListenException( "Connection Error" ) ;
     
-        impl() -> is_connected_ = true ; 
+        impl() -> is_connected_ = true ; // commit ;
+        impl() -> is_bound_ = true ;
     }
       
     void CSocket::bind ( const std::string& addr_str , port_type port ) 
@@ -297,43 +309,36 @@ namespace ip {
         
         EAddressFamily current_af = impl() -> info_.addr_family_ ;
         ip_address addr {} ;
+        
         if ( ! set_address( current_af , addr_str.c_str() , port , ( ::sockaddr * ) &addr ) ) 
             throw CSocketListenException( "Bind Error while loading address" ) ;
+        
         if ( ::bind( impl() -> sock_ , ( ::sockaddr * ) &addr , sizeof( ip_address ) ) == - 1 ) 
             throw CSocketListenException( "Bind Error" ) ;
         
         impl() -> is_bound_ = true ; // commit ;
     }
-    
-// change getsockname / getpeername
-/*
+
     CSocket CSocket::accept ()  
     {
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
-        
+            
         auto impl_p = std::unique_ptr< CImplementation >{ new CImplementation } ; // def
-        
-        ip_address local_addr {} , remote_addr {} ;
-        
-        { ::socklen_t addrlen = sizeof remote_addr ;
-          impl_p -> sock_ = ::accept( impl() -> sock_ , &remote_addr , &addrlen ) ; }
-        
+            
+        ip_address addr {} ;
+            
+        { ::socklen_t addrlen = sizeof addr ;
+            impl_p -> sock_ = ::accept( impl() -> sock_ , ( ::sockaddr * ) &addr , &addrlen ) ; }
+            
         if ( impl_p -> sock_ == - 1 ) 
             throw CSocketAcceptException( "Accept Exception" ) ;
-        
-        if ( ! get_address( &local_addr ,  , , ) )
-            throw CSocketAcceptException( "Accept Exception while loading peer address" ) ;
-        
-        { ::socklen_t addrlen = sizeof remote_addr ;
-          if ( ::getsockname( impl_p -> sock_ , &local_addr ,  ) == -1 );
-            throw CSocketAcceptException( "Accept Exception" ) ;
-        
-        if ( ! get_address( , , , ) )
-            throw CSocketAcceptException( "Accept Exception while loading local address" ) ;
-        
-        return CScoket{ std::move( impl_p ) } ;
+        // noexcept :
+        impl_p -> info_ = impl() -> info_ ;
+        impl_p -> is_connected_ = true ;
+        impl_p -> is_bound_ = true ;
+        return CSocket{ std::move( impl_p ) } ;
     }
-*/
+
     /*           
     void CSocket::write_all ( std::uint8_t * dst , std::size_t bucket_size ) 
     {

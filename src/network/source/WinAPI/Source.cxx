@@ -19,7 +19,7 @@ namespace
                 
                 if ( WSAStratup( MAKEWORD( 2,2 ) , &wsa_data ) == -1 )
                     throw CSocketInitException( "Socket Init Error : WSAStartup Failed" ) ;
-                std::atexit( [] () // functions, that are set with atexit, will be called before destruction of globals
+                std::atexit( [] () // functions, that are set with std::atexit, will be called before destruction of globals
                 {
                     WSACleanup() ;
                 } ) ; 
@@ -43,12 +43,7 @@ namespace ip {
         impl() -> info_ = CImplementation::SocketInfo{ addr_family , type , proto } ;
     }
     
-    CSocket::CSocket ( std::unique_ptr< ImplementationBase > impl_ptr ) noexcept
-        : impl_( std::move( impl_ptr ) )
-    {
-        attempt_init_WSA () ;
-    }
-    
+
     CSocket:: ~ CSocket () 
     { 
         if ( is_empty() ) return ;

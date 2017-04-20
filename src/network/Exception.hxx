@@ -47,6 +47,7 @@ namespace network
         struct CSocketReadException      : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketWriteException     : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketListenException    : CSocketException { using CSocketException::CSocketException ; } ;
+        struct CSocketAcceptException    : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketConnectException   : CSocketException { using CSocketException::CSocketException ; } ; 
         struct CSocketSetOptionException : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketLogicException     : CSocketException { using CSocketException::CSocketException ; } ;
