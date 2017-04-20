@@ -88,16 +88,6 @@ namespace network
     }
 }
 
-bool network::ip::CIPAddress::to_string_address( EAddressFamily af , const std::uint8_t * binary , char * dst , std::size_t buff_sz )
-{
-    return ::inet_ntop( AF_translate( af ) , binary , dst , buff_sz ) ;
-}
-
-bool network::ip::CIPAddress::to_binary_address( EAddressFamily af , std::uint8_t * binary , const char * src )
-{
-    return ::inet_pton( AF_translate( af ) , src , binary ) != - 1 ;
-}
-
 std::uint32_t network::htonl( std::uint32_t l )
 {
     return ::htonl( l ) ;
@@ -121,19 +111,18 @@ std::uint16_t network::ntohs( std::uint16_t s )
 struct network::ip::CSocket::CImplementation 
                 : network::ip::CSocket::IImplementation
 {  
-    sock_handle_type sock_ ;
+    CImplementation () : is_connected_{ false } , is_bound_{ false }
+    { 
+    }
     
+    sock_handle_type sock_ ;   
     struct SocketInfo
     { 
         EAddressFamily addr_family_ ; 
         ESocketType    socket_type_ ; 
         EProtocol      protocol_    ; 
     } info_ ;
-    
-    struct 
-    { 
-        CIPAddress connected_ , binded_ ; 
-    } addr_ ;
+    std::uint8_t is_connected_ : 1 , is_bound_ : 1 ;
 } ;
 
 network::ip::CSocket::CImplementation * network::ip::CSocket::impl ()
@@ -179,25 +168,48 @@ namespace ip {
     bool CSocket::is_connected () const noexcept 
     { 
         if ( is_empty() ) return false ;
-        return ! impl() -> addr_.connected_.empty() ;
+        return impl() -> is_connected_ ;
     }
 
     bool CSocket::is_bound () const noexcept 
     { 
         if ( is_empty() ) return false ;
-        return ! impl() -> addr_.binded_.empty() ;
+        return impl() -> is_bound_ ;
     }
                             
     CIPAddress CSocket::remote_endpoint () const 
     { 
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
-        return impl() -> addr_.connected_ ;
+        
+        ip_address addr ;
+        ::socklen_t addrlen = sizeof addr ;
+        
+        if ( ::getpeername( impl() -> sock_ , ( ::sockaddr * ) &addr ,  &addrlen ) == - 1 ) return {} ;
+        CIPAddress peer_addr ;
+        
+        if ( ! get_address( ( ::sockaddr * ) &addr , peer_addr.addr_ , &peer_addr.port_ , &peer_addr.family_ ) ) 
+            return {} ;
+        
+        peer_addr.is_empty_ = false ;
+        return peer_addr ;
     }
 
     CIPAddress CSocket::bound_address () const  
     { 
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
-        return impl() -> addr_.binded_ ;
+
+        
+        ip_address addr ;
+        ::socklen_t addrlen = sizeof addr ;
+        
+        if ( ::getsockname( impl() -> sock_ , ( ::sockaddr * ) &addr ,  &addrlen ) == - 1 ) return {} ;
+        CIPAddress bound_addr ;
+        
+        if ( ! get_address( ( ::sockaddr * ) &addr , bound_addr.addr_ , &bound_addr.port_ , &bound_addr.family_ ) ) 
+            return {} ;
+        
+        bound_addr.is_empty_ = false ;
+        return bound_addr ;
     }
 
     EProtocol CSocket::protocol () const 
@@ -267,8 +279,7 @@ namespace ip {
 
     void CSocket::connect ( const std::string& addr_str , port_type port ) 
     {            
-        if ( is_empty() ) throw CSocketLogicException( null_error ) ;
-        
+        if ( is_empty() ) throw CSocketLogicException( null_error ) ;        
         EAddressFamily current_af = impl() -> info_.addr_family_ ;
         
         ip_address addr {} ;
@@ -278,42 +289,54 @@ namespace ip {
         
         if ( ::connect( impl() -> sock_ , ( ::sockaddr * ) &addr , sizeof( ip_address ) ) == - 1 ) 
             throw CSocketListenException( "Connection Error" ) ;
-        
-        // 
-        char ephemeral_addr_str [ IP_ADDRESS_STRING_MAX_LEN ] ;
-        port_type ephemeral_port ; EAddressFamily ephemeral_af ;
-        get_address( ( ::sockaddr * ) &addr , ephemeral_addr_str , &ephemeral_port , &ephemeral_af ) ;
-        
-        impl() -> addr_.connected_ = CIPAddress( current_af , addr_str , port ) ;
-        impl() -> addr_.binded_    = CIPAddress( ephemeral_af , ephemeral_addr_str , ephemeral_port ) ; 
+    
+        impl() -> is_connected_ = true ; 
     }
       
     void CSocket::bind ( const std::string& addr_str , port_type port ) 
     { 
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
+        
         EAddressFamily current_af = impl() -> info_.addr_family_ ;
         ip_address addr {} ;
         if ( ! set_address( current_af , addr_str.c_str() , port , ( ::sockaddr * ) &addr ) ) 
             throw CSocketListenException( "Bind Error while loading address" ) ;
         if ( ::bind( impl() -> sock_ , ( ::sockaddr * ) &addr , sizeof( ip_address ) ) == - 1 ) 
             throw CSocketListenException( "Bind Error" ) ;
+        
+        impl() -> is_bound_ = true ; // commit ;
     }
     
+// change getsockname / getpeername
 /*
     CSocket CSocket::accept ()  
     {
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
-        auto impl_p = std::unique_ptr< CImplementation >{ new CImplementation } ;
         
-        { ip_address accepted_addr ;
-          ::socklen_t addrlen ;
-          impl_p -> sock_ = ::accept( sockfd , &accepted_addr , &addrlen ) ; } 
+        auto impl_p = std::unique_ptr< CImplementation >{ new CImplementation } ; // def
         
-
+        ip_address local_addr {} , remote_addr {} ;
+        
+        { ::socklen_t addrlen = sizeof remote_addr ;
+          impl_p -> sock_ = ::accept( impl() -> sock_ , &remote_addr , &addrlen ) ; }
+        
+        if ( impl_p -> sock_ == - 1 ) 
+            throw CSocketAcceptException( "Accept Exception" ) ;
+        
+        if ( ! get_address( &local_addr ,  , , ) )
+            throw CSocketAcceptException( "Accept Exception while loading peer address" ) ;
+        
+        { ::socklen_t addrlen = sizeof remote_addr ;
+          if ( ::getsockname( impl_p -> sock_ , &local_addr ,  ) == -1 );
+            throw CSocketAcceptException( "Accept Exception" ) ;
+        
+        if ( ! get_address( , , , ) )
+            throw CSocketAcceptException( "Accept Exception while loading local address" ) ;
+        
         return CScoket{ std::move( impl_p ) } ;
     }
-
-/*           
+*/
+    /*           
     void CSocket::write_all ( std::uint8_t * dst , std::size_t bucket_size ) 
     {
         if ( is_empty() ) throw CSocketLogicException( "Logic Error on write, socket is not connected" ) ;

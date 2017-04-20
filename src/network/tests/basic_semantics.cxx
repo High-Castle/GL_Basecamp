@@ -20,18 +20,17 @@ int main ()
     {
         //auto sock2 = std::move( sock ) ;
         sock.connect( "0.0.0.0" , 8082 ) ;
-        std::cout << sock.remote_endpoint().address() ;
+        std::cout << sock.bound_address().address() << " " << sock.bound_address().port() << "\n" ;
     }
     catch ( const ip::CSocketException& e )
     {
         std::cerr << e.what() << "\n" ;
     }
-    
-    
+        
     
     ip::CIPAddress addr { ip::EAddressFamily::IPv4 , "192.168.67.5" , 1235 } ;
     ip::CIPAddress addr2 ;
-    assert( addr.is_valid() ) ;
+    assert( addr.is_valid_string() ) ;
     assert( addr2.empty() ) ;
     addr2 = addr ;
     assert( addr == addr2 ) ;

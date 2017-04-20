@@ -1,6 +1,8 @@
 #ifndef NETWORK_IP_CIPADDRESS_HXX
 #define NETWORK_IP_CIPADDRESS_HXX
 
+#include <cstring>
+
 #include "Types.hxx"
 
 /* 
@@ -25,44 +27,40 @@ namespace network
             CIPAddress () : is_empty_( true ) { } ;
             
             CIPAddress ( EAddressFamily family , const std::string& addr_str , port_type port ) noexcept
-                : port_( port ) , family_( family ) , is_valid_( true ) , is_empty_( false )
+                : port_( port ) , family_( family ) , is_empty_( false )
             { 
-                if( ! to_binary_address( family_ , addr_ , addr_str.c_str() ) )
-                    is_valid_ = false ;
+                // todo : check address manually
+                std::strcpy( addr_ , addr_str.c_str() ) ;
             }
             
-            std::string address () const 
-            { 
-                char strarr [ IP_ADDRESS_STRING_MAX_LEN + 1 ] ;
-                if( ! to_string_address( family_ , addr_ , strarr , IP_ADDRESS_STRING_MAX_LEN + 1 ) )
-                    throw CBadIPAddress( "Bad Address" ) ;
-                return strarr ; 
-            } 
+            std::string    address () const { return addr_ ; } 
+            port_type      port    () const noexcept { return port_   ; } // port in host byte order
+            EAddressFamily family  () const noexcept { return family_ ; } 
+            bool           empty   () const noexcept { return is_empty_ ; }
+            void           release () noexcept { is_empty_ = true ; }
             
-            port_type      port     () const noexcept { return port_   ; } // port in host byte order
-            EAddressFamily family   () const noexcept { return family_ ; } 
-            bool           empty    () const noexcept { return is_empty_ ; }
-            bool           is_valid () const noexcept { return is_valid_ ; }
-            
+            bool is_valid_string() const noexcept
+            {
+                for ( const char * it = addr_ ; it != addr_ + sizeof addr_ + 1  ; ++ it )
+                    if ( * it == '\0' ) return true ;
+                return false ;
+            }
             
             private :
-                static bool to_string_address( EAddressFamily , const unsigned char * , char * , std::size_t ) ;  // implementation 
-                static bool to_binary_address( EAddressFamily , unsigned char * , const char * ) ;  // implementation
+                            
+                port_type      port_     ; // in host byte order
+                EAddressFamily family_   ; 
+                std::uint8_t   is_empty_ ;
                 
-                port_type        port_   ; // in host byte order
-                EAddressFamily   family_ ; 
-                
-                std::uint8_t is_valid_ : 1 , 
-                             is_empty_ : 1 ;
-                
-                std::uint8_t addr_[ IP_ADDRESS_MAX_LEN ] ; // DO NOT TOUCH, implementation-defined byte order
+                char addr_[ IP_ADDRESS_STRING_MAX_LEN + 1 ] ; // 
             
-
+            friend class CSocket ; // sad, but true, todo 
+            
             friend bool operator == ( const CIPAddress& op0 , const CIPAddress& op1 ) 
             {
+                if ( op0.empty() || op1.empty() ) return false ; 
                 if ( op0.family_ != op1.family_ || op0.port_ != op1.port_ ) return false ;
-                const std::size_t bound = op0.family_ == EAddressFamily::IPv4 ? IPv4_ADDRESS_LEN : IPv6_ADDRESS_LEN ;
-                return std::memcmp( op0.addr_ , op1.addr_ , bound ) == 0 ;
+                return std::strcmp( op0.addr_ , op1.addr_ ) == 0 ;
             }
             
             friend bool operator != ( const CIPAddress& op0 , const CIPAddress& op1 ) /*  */
@@ -70,7 +68,6 @@ namespace network
                 return ! operator == ( op0 , op1 ) ;
             }
         } ; 
-        
     } // ip
 } // network
 #endif // NETWORK_IP_CIPADDRESS_HXX
