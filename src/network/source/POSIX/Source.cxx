@@ -48,57 +48,40 @@ namespace network
                 static_assert( to_int( EProtocol::ENUM_END ) != sizeof table , "NOT ALL PROTOCOLS IMPLEMENTED" ) ;
                 return table[ to_int( proto ) ] ;
             }
-            /*
-            void get_port_hbo( const sockaddr * addr , port_type * dst ) // nbo stands for network byte order
+            
+            bool get_address( const ::sockaddr * addr , char * str_dst , port_type * port_dst , EAddressFamily * af_dst )
             {
                 if ( addr -> sa_family == AF_INET ) {
-                    * dst = reinterpret_cast< ::sockaddr_in & >( addr ).sin_port ;
+                    auto& ipaddr = reinterpret_cast< const ::sockaddr_in & >( * addr ) ;
+                    if ( inet_ntop( AF_INET , &ipaddr.sin_addr , str_dst , INET_ADDRSTRLEN ) == NULL ) return false ;
+                    * af_dst   = EAddressFamily::IPv4 ;
+                    * port_dst = ::ntohs( ipaddr.sin_port ) ;
                 }
                 else {
-                    * dst = reinterpret_cast< ::sockaddr_in6 & >( addr ).sin6_port ;
+                    auto& ip6addr = reinterpret_cast< const ::sockaddr_in6 & >( * addr ) ;
+                    if ( inet_ntop( AF_INET6 , &ip6addr.sin6_addr , str_dst , INET6_ADDRSTRLEN ) == NULL ) return false ;
+                    * af_dst   = EAddressFamily::IPv6 ;
+                    * port_dst = ::ntohs( ip6addr.sin6_port ) ;
                 }
-            }
-
-            void get_address_str( const sockaddr * addr , char * dst )
-            {
-                std::size_t addr_len ;
-                void * src ;
-                if ( addr -> sa_family == AF_INET ) {
-                    src = &reinterpret_cast< ::sockaddr_in & >( addr ).sin_addr ;
-                    addr_len = IPv4_ADDRESS_LEN ;
-                }
-                else {
-                    src = &reinterpret_cast< ::sockaddr_in6 & >( addr ).sin6_addr ;
-                    addr_len = IPv6_ADDRESS_LEN ;
-                }
-                std::memcpy( dst , src , addr_len ) ;
+                return true ;
             }
             
-            void set_port_nbo( const sockaddr * addr , port_type * dst ) // nbo stands for network byte order
+            bool set_address( EAddressFamily af , const char * addr_str , port_type port , ::sockaddr * addr )
             {
-                if ( addr -> sa_family == AF_INET ) {
-                    * dst = reinterpret_cast< ::sockaddr_in & >( addr ).sin_port ;
+                if ( af == EAddressFamily::IPv4 ) {
+                    auto& ipaddr = reinterpret_cast< ::sockaddr_in & >( * addr ) ;
+                    if ( inet_pton( AF_INET , addr_str , &ipaddr.sin_addr ) != 1 ) return false ;
+                    ipaddr.sin_family = AF_INET ;
+                    ipaddr.sin_port  = ::htons( ipaddr.sin_port ) ;
                 }
                 else {
-                    * dst = reinterpret_cast< ::sockaddr_in6 & >( addr ).sin6_port ;
+                    auto& ip6addr = reinterpret_cast< ::sockaddr_in6 & >( * addr ) ;
+                    if( inet_pton( AF_INET6 , addr_str , &ip6addr.sin6_addr ) != 1 ) return false ;
+                    ip6addr.sin6_family = AF_INET6 ;
+                    ip6addr.sin6_port = ::htons( ip6addr.sin6_port ) ;
                 }
+                return true ;
             }
-
-            void set_address_str( const sockaddr * addr , char * dst )
-            {
-                std::size_t addr_len ;
-                void * src ;
-                if ( addr -> sa_family == AF_INET ) {
-                    src = &reinterpret_cast< ::sockaddr_in & >( addr ).sin_addr ;
-                    addr_len = IPv4_ADDRESS_LEN ;
-                }
-                else {
-                    src = &reinterpret_cast< ::sockaddr_in6 & >( addr ).sin6_addr ;
-                    addr_len = IPv6_ADDRESS_LEN ;
-                }
-                std::memcpy( dst , src , addr_len ) ;
-            }
-            */
 
             const char null_error [] = "Attempt to manipulate empty socket" ;    
         }
@@ -282,39 +265,41 @@ namespace ip {
         return write( reinterpret_cast< const std::uint8_t * >( str.c_str() ) , str.length() + 1 ) ;
     }
 
-    
-    
-    /*
     void CSocket::connect ( const std::string& addr_str , port_type port ) 
     {            
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
         
-        ip_address  addr {} ;
-        ::socklen_t addrlen ;
+        EAddressFamily current_af = impl() -> info_.addr_family_ ;
         
-        if ( address_to_struct( impl -> info_.addr_family_ , addr_str , port , &addr ) ) 
-            throw CSocketListenException( "Listen Error while loading address" ) ;
+        ip_address addr {} ;
         
-        if ( ::connect( impl -> sock_ , &addr , &addrlen ) == - 1 ) 
-            throw CSocketListenException( "Listen Error" ) ;
+        if ( ! set_address( current_af , addr_str.c_str() , port , ( ::sockaddr * ) &addr ) ) 
+            throw CSocketListenException( "Connection Error while loading address" ) ;
         
-         = get_address_str ( )
+        if ( ::connect( impl() -> sock_ , ( ::sockaddr * ) &addr , sizeof( ip_address ) ) == - 1 ) 
+            throw CSocketListenException( "Connection Error" ) ;
         
-        //impl() -> addr_.connected_ = CIPAddress( impl -> info_.addr_family_ , addr_str , port ) ;
-        //impl() -> addr_.binded_ = CIPAddress( impl -> info_.addr_family_ , addr_str , port ) ; // ephemeral port
+        // 
+        char ephemeral_addr_str [ IP_ADDRESS_STRING_MAX_LEN ] ;
+        port_type ephemeral_port ; EAddressFamily ephemeral_af ;
+        get_address( ( ::sockaddr * ) &addr , ephemeral_addr_str , &ephemeral_port , &ephemeral_af ) ;
+        
+        impl() -> addr_.connected_ = CIPAddress( current_af , addr_str , port ) ;
+        impl() -> addr_.binded_    = CIPAddress( ephemeral_af , ephemeral_addr_str , ephemeral_port ) ; 
     }
-    
-    
-    void CSocket::bind ( const std::string& address , port_type port ) 
+      
+    void CSocket::bind ( const std::string& addr_str , port_type port ) 
     { 
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
+        EAddressFamily current_af = impl() -> info_.addr_family_ ;
+        ip_address addr {} ;
+        if ( ! set_address( current_af , addr_str.c_str() , port , ( ::sockaddr * ) &addr ) ) 
+            throw CSocketListenException( "Bind Error while loading address" ) ;
+        if ( ::bind( impl() -> sock_ , ( ::sockaddr * ) &addr , sizeof( ip_address ) ) == - 1 ) 
+            throw CSocketListenException( "Bind Error" ) ;
     }
     
-    */
-
-    
-    /*
- 
+/*
     CSocket CSocket::accept ()  
     {
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
@@ -328,7 +313,7 @@ namespace ip {
         return CScoket{ std::move( impl_p ) } ;
     }
 
-           
+/*           
     void CSocket::write_all ( std::uint8_t * dst , std::size_t bucket_size ) 
     {
         if ( is_empty() ) throw CSocketLogicException( "Logic Error on write, socket is not connected" ) ;
