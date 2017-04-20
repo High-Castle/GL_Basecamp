@@ -10,7 +10,7 @@ int main ()
 {
     namespace ip = network::ip ;
     
-    ip::CSocket sock { ip::EAddressFamily::IPv4 , ip::ESocketType::STREAM , ip::EProtocol::IP } ;
+    ip::CSocket sock { ip::EAddressFamily::IPv4 , ip::ESocketType::STREAM } ;
     
     assert( ! sock.is_empty() ) ;
     assert( ! sock.is_bound() ) ;
@@ -18,13 +18,16 @@ int main ()
     
     try 
     {
-        auto sock2 = std::move( sock ) ;
-        ip::CIPAddress addr = sock.remote_endpoint() ;
+        //auto sock2 = std::move( sock ) ;
+        sock.connect( "0.0.0.0" , 8082 ) ;
+        std::cout << sock.remote_endpoint().address() ;
     }
     catch ( const ip::CSocketException& e )
     {
         std::cerr << e.what() << "\n" ;
     }
+    
+    
     
     ip::CIPAddress addr { ip::EAddressFamily::IPv4 , "192.168.67.5" , 1235 } ;
     ip::CIPAddress addr2 ;

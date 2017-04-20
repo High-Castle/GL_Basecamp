@@ -72,13 +72,13 @@ namespace network
                     auto& ipaddr = reinterpret_cast< ::sockaddr_in & >( * addr ) ;
                     if ( inet_pton( AF_INET , addr_str , &ipaddr.sin_addr ) != 1 ) return false ;
                     ipaddr.sin_family = AF_INET ;
-                    ipaddr.sin_port  = ::htons( ipaddr.sin_port ) ;
+                    ipaddr.sin_port  = ::htons( port ) ;
                 }
                 else {
                     auto& ip6addr = reinterpret_cast< ::sockaddr_in6 & >( * addr ) ;
                     if( inet_pton( AF_INET6 , addr_str , &ip6addr.sin6_addr ) != 1 ) return false ;
                     ip6addr.sin6_family = AF_INET6 ;
-                    ip6addr.sin6_port = ::htons( ip6addr.sin6_port ) ;
+                    ip6addr.sin6_port = ::htons( port ) ;
                 }
                 return true ;
             }

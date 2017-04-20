@@ -22,6 +22,8 @@ namespace network
     std::uint32_t ntohl( std::uint32_t ) ;
     std::uint16_t ntohs( std::uint16_t ) ;
     
+    std::string resolve( const std::string& ) ; // optional
+    
     namespace ip 
     {
         enum class EShutdown : unsigned short
@@ -34,7 +36,7 @@ namespace network
         
         struct CSocket final
         {
-            CSocket ( EAddressFamily addr_family , ESocketType type , EProtocol proto ) ;
+            CSocket ( EAddressFamily addr_family , ESocketType type , EProtocol proto = EProtocol::IP ) ;
             
             CSocket( const CSocket& sock ) = delete ;
             CSocket& operator = ( const CSocket& sock ) = delete ;
