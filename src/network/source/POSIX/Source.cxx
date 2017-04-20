@@ -5,6 +5,8 @@
 #include <vector>
 #include <string>
 
+#include <initializer_list>
+
 #include "Exception.hxx"
 #include "CIPAddress.hxx"
 #include "CSocket.hxx"
@@ -47,6 +49,34 @@ namespace network
                 static int table [] { IPPROTO_IP , IPPROTO_UDP , IPPROTO_TCP } ;
                 static_assert( to_int( EProtocol::ENUM_END ) != sizeof table , "NOT ALL PROTOCOLS IMPLEMENTED" ) ;
                 return table[ to_int( proto ) ] ;
+            }
+            
+            int SHUT_translate ( EShutdown how )
+            {
+                static int table [] { SHUT_RD , SHUT_WR , SHUT_RDWR } ;
+                static_assert( to_int( EShutdown::ENUM_END ) != sizeof table , "NOT ALL EShutdown IMPLEMENTED" ) ;
+                return table[ to_int( how ) ] ;
+            }
+            
+            template < class EnT > int FLAG_translate ( EnT flg ) = delete ;
+            
+            template <> int FLAG_translate <> ( EWriteFlags flg ) {
+                static int table [] { MSG_DONTWAIT } ;
+                static_assert( to_int( EWriteFlags::ENUM_END ) != sizeof table , "NOT ALL EWriteFlags IMPLEMENTED" ) ;
+                return table[ to_int( flg ) ] ;
+            }
+            
+            template <> int FLAG_translate <> ( EReadFlags flg ) {
+                static int table [] { MSG_DONTWAIT , MSG_WAITALL } ;
+                static_assert( to_int( EReadFlags::ENUM_END ) != sizeof table , "NOT ALL EReadFlags IMPLEMENTED" ) ;
+                return table[ to_int( flg ) ] ;
+            }
+            
+            template < class FlagsIt > int FLAGS_eval ( FlagsIt from , FlagsIt to ) {
+                int acc ;
+                for ( ; from != to ; ++ from ) 
+                    acc |= FLAG_translate( * from ) ;
+                return acc ;
             }
             
             bool get_address( const ::sockaddr * addr , char * str_dst , port_type * port_dst , EAddressFamily * af_dst )
@@ -255,12 +285,12 @@ namespace ip {
     }
     
 
-    std::size_t CSocket::write ( const std::uint8_t * src , std::size_t sz )
+    std::size_t CSocket::write ( const std::uint8_t * src , std::size_t sz , std::initializer_list< EWriteFlags > flags )
     {
         if ( ! is_connected() ) 
             throw CSocketLogicException( "Logic Error on write, socket is not connected" ) ;
         
-        ::ssize_t bytes_written = ::write( impl() -> sock_ , src , sz ) ;
+        ::ssize_t bytes_written = ::send( impl() -> sock_ , src , sz , FLAGS_eval( flags.begin() , flags.end() ) ) ;
         
         if ( bytes_written == - 1 ) 
             throw CSocketWriteException( "Write Error" ) ;
@@ -268,12 +298,12 @@ namespace ip {
         return bytes_written ;
     }
 
-    std::size_t CSocket::read ( std::uint8_t * dst , std::size_t sz )
+    std::size_t CSocket::read ( std::uint8_t * dst , std::size_t sz , std::initializer_list< EReadFlags > flags )
     {
         if ( ! is_connected() ) 
             throw CSocketLogicException( "Logic Error on read, socket is not connected" )  ;
         
-        ::ssize_t bytes_read = ::read( impl() -> sock_ , dst , sz ) ;
+        ::ssize_t bytes_read = ::recv( impl() -> sock_ , dst , sz , FLAGS_eval( flags.begin() , flags.end() ) ) ;
         
         if ( bytes_read == - 1 ) 
             throw CSocketWriteException( "Read Error" ) ;
@@ -281,9 +311,9 @@ namespace ip {
         return bytes_read ;
     }
     
-    std::size_t CSocket::write ( const std::string& str )
+    std::size_t CSocket::write ( const std::string& str , std::initializer_list< EWriteFlags > flags )
     {
-        return write( reinterpret_cast< const std::uint8_t * >( str.c_str() ) , str.length() + 1 ) ;
+        return write( reinterpret_cast< const std::uint8_t * >( str.c_str() ) , str.length() + 1 , flags ) ;
     }
 
     void CSocket::connect ( const std::string& addr_str , port_type port ) 
@@ -338,19 +368,25 @@ namespace ip {
         impl_p -> is_bound_ = true ;
         return CSocket{ std::move( impl_p ) } ;
     }
-
-    /*           
-    void CSocket::write_all ( std::uint8_t * dst , std::size_t bucket_size ) 
+    
+    void CSocket::shutdown ( EShutdown how )
+    {
+        if ( ! is_connected() ) 
+            throw CSocketLogicException( "Shutdown Error : attempt to shutdown socket, that is not connected" ) ;
+        
+        if ( ::shutdown( impl() -> sock_ , SHUT_translate( how ) ) == - 1 )
+            std::cerr << "cerr : " << __func__ << " : shutdown failed" ;
+    }
+    
+              
+    void CSocket::write_all ( std::uint8_t * dst , std::size_t bucket_size , std::initializer_list< EWriteFlags > flags ) 
     {
         if ( is_empty() ) throw CSocketLogicException( "Logic Error on write, socket is not connected" ) ;
         if ( ! is_empty() ) throw CSocketLogicException( "Logic Error on read, socket is not connected" ) ;
     }
 
-    
-    void CSocket::read_all ( std::vector< uint8_t >& output_vec )
-    {
-        
-    }
+    /* 
+
                 
     void CSocket::set_option( const ISocketOption& option )
     {
@@ -358,7 +394,11 @@ namespace ip {
         
     }
 
-    // void CSocket::shutdown ( EShutdown how ) ;         
+
+    void CSocket::read_all ( std::vector< uint8_t >& output_vec )
+    {
+        
+    }
 //*/
 } /* ip */ 
 } /* network */

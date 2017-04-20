@@ -5,6 +5,8 @@
 #include <cstring>
 #include <vector>
 
+#include <initializer_list>
+
 #include "Exception.hxx" 
 #include "Types.hxx"
 #include "CIPAddress.hxx"
@@ -32,6 +34,19 @@ namespace network
            WRITE ,
            ALL ,
         ENUM_END
+        } ;
+        
+        enum class EWriteFlags : unsigned short
+        {
+            DONT_WAIT ,
+        ENUM_END      
+        } ;
+        
+        enum class EReadFlags : unsigned short
+        {
+            DONT_WAIT ,
+            WHAIT_ALL ,
+        ENUM_END     
         } ;
         
         struct CSocket final
@@ -64,14 +79,15 @@ namespace network
 
             void connect ( const std::string& address , port_type port ) ;
             
-            std::size_t write ( const std::uint8_t * src , std::size_t sz ) ;
-            std::size_t write ( const std::string& str ) ;
-            std::size_t read  ( std::uint8_t * dst , std::size_t sz ) ;
+            std::size_t write ( const std::uint8_t * src , std::size_t sz , std::initializer_list< EWriteFlags > = {} ) ;
+            std::size_t write ( const std::string& str , std::initializer_list< EWriteFlags > = {} ) ;
+            std::size_t read  ( std::uint8_t * dst , std::size_t sz , std::initializer_list< EReadFlags > = {} ) ;
 
-            void write_all ( std::uint8_t * dst , std::size_t bucket_size ) ;
-            void read_all ( std::vector< std::uint8_t >& ) ; // optional
-            void set_option( const struct ISocketOption& option ) ;
+            void write_all ( std::uint8_t * dst , std::size_t bucket_size , std::initializer_list< EWriteFlags > = {} ) ;
+            void read_all ( std::vector< std::uint8_t >& , std::initializer_list< EReadFlags > = {} ) ; // optional
+            void set_option( const struct ISocketOption& option ) ; 
             
+            CSocket duplicate () ; // dup() socket file descriptor ( or WSADuplicateSocket for windows handlers )
             void shutdown ( EShutdown ) ;
             
             private :
@@ -119,7 +135,7 @@ namespace network
 } // network
 
 // ( http://stackoverflow.com/questions/27609522/extern-template-for-template-parametrized-with-incompete-type )
-// inlined functions templates such as std::unique_ptr< ... >::~std::unique_ptr< ... > will be instantiated 
+// inlined functions templates such as std::unique_ptr< ... >::~unique_ptr< ... > will be instantiated 
 // even if i do prevent it with `extern template`.
 // extern template class std::unique_ptr< network::ip::CSocket::CImplementation > ;
 // extern template class std::unique_ptr< network::ip::ISocketOption::COptionParams > ;
