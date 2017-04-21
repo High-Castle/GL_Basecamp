@@ -95,7 +95,7 @@ namespace network
             private :
                 struct CImplementation ;
                 
-                struct ImplementationBase // i will somehow cleanup this shame in further updates.
+                struct ImplementationBase // TODO : i will somehow cleanup this shame in further updates.
                 {
                     virtual ~ ImplementationBase () = default ;
                 } ;
@@ -125,6 +125,8 @@ namespace network
                
                virtual std::unique_ptr< OptionParamsBase > parameters () const = 0 ;
         } ;
+        
+        // TODO : timeout options
         
         struct CReuseAddress final : ISocketOption
         {

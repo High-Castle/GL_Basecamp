@@ -18,11 +18,16 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
-#include <errno.h> 
+#include <errno.h> // NOTE : errno is thread-safe (thread_local variable)
 
-// todo : handle SIGPIPE
-// todo : write_all
-// todo : select / poll
+
+// TODO : handle SIGPIPE .done
+// TODO : write_all      
+// TODO : select / poll
+
+// TODO : timeout options
+
+// TODO : WIN support
 
 namespace network
 {
@@ -292,6 +297,7 @@ namespace ip {
         {
             switch ( errno )
             {
+                // TODO
             }
             throw CSocketListenException( "Listen Exception" ) ;
         }
@@ -338,6 +344,7 @@ namespace ip {
             {
                 case ECONNRESET : throw CSocketConnectionException( "Connection on Read Exception : Connection is reset by peer" ) ;
                 case ENOMEM     : throw CSocketReadException( "Read Exception : No Memory Available" ) ;
+                
                 // AS ASSERTIONS : 
                 case EBADF      : throw CSocketReadException( "Read Exception : Bad socket" ) ;
                 case EINVAL     : throw CSocketReadException( "Read Exception : Invalid argument passed" ) ;
@@ -371,7 +378,7 @@ namespace ip {
         {
             switch ( errno )
             {
-                
+                // TODO
             }
             throw CSocketConnectException( "Connect Exception" ) ;
         }
@@ -394,6 +401,7 @@ namespace ip {
         {
             switch ( errno )
             {
+                // TODO
             }
             throw CSocketBindException( "Connect Exception" ) ;
         }
@@ -419,7 +427,7 @@ namespace ip {
         {
             switch ( errno )
             {
-                
+                // TODO
             }
             throw CSocketAcceptException( "Accept Exception" ) ;
         }

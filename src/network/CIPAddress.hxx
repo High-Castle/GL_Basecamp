@@ -6,11 +6,12 @@
 #include "Types.hxx"
 
 /* 
- * todo : store as strings ( format them manually, to deal with trailing namespaces, 
+ * TODO : store as strings ( format them manually, to deal with trailing namespaces, 
  *        192.168.067.01 != 192.168.67.1 , etc. ) 
  *        note, that behaviour 192.168.067.01 == 192.168.67.1 is widespread ( ping, host ... ) 
  */
-/* todo : IPv6 support */
+
+/* TODO : IPv6 support ( or testing, if it is already supported ) */
 
 /* NOTE : only xxx.xxx.xxx.xxx format without leading zeros is allowed in current version. */
 // NOTE : this file is a temporary implementation of CIPAddress ; 
@@ -71,7 +72,7 @@ namespace network
                 char addr_[ IP_ADDRESS_STRING_MAX_LEN + 1 ] ; // 
                 
                 
-            friend class CSocket ; // sad, but true, todo it ( used in both address getters in CSocket )
+            friend class CSocket ; // HACK : sad, but true, FIXME it ( used in both address getters in CSocket )
             
             friend bool operator == ( const CIPAddress& op0 , const CIPAddress& op1 ) 
             { 
