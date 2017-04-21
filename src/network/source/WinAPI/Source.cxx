@@ -19,7 +19,7 @@ namespace
                 
                 if ( WSAStratup( MAKEWORD( 2,2 ) , &wsa_data ) == -1 )
                     throw CSocketInitException( "Socket Init Error : WSAStartup Failed" ) ;
-                std::atexit( [] () // functions, that are set with std::atexit, will be called before destruction of globals
+                std::atexit( [] () // DO NOT PLACE THAT IN DESTRUCTOR, NEVER. functions, that are set with std::atexit, will be called before destruction of globals,
                 {
                     WSACleanup() ;
                 } ) ; 

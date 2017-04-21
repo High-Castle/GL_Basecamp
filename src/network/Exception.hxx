@@ -27,8 +27,6 @@ namespace network
             char message_ [ MAX_MESSAGE_LEN + 1 ] ;
     } ;
     
-    
-    
     namespace ip
     {
         struct CSocketException : CBasicException  
@@ -42,15 +40,17 @@ namespace network
             CBadIPAddress( const char * message ) noexcept : 
                     CBasicException ( message ) {}
         } ;
-        
-        struct CSocketInitException      : CSocketException { using CSocketException::CSocketException ; } ;
-        struct CSocketReadException      : CSocketException { using CSocketException::CSocketException ; } ;
-        struct CSocketWriteException     : CSocketException { using CSocketException::CSocketException ; } ;
-        struct CSocketListenException    : CSocketException { using CSocketException::CSocketException ; } ;
-        struct CSocketAcceptException    : CSocketException { using CSocketException::CSocketException ; } ;
-        struct CSocketConnectException   : CSocketException { using CSocketException::CSocketException ; } ; 
-        struct CSocketSetOptionException : CSocketException { using CSocketException::CSocketException ; } ;
-        struct CSocketLogicException     : CSocketException { using CSocketException::CSocketException ; } ;
+        // do not confuse CSocketConnectionException with CSocketConnectException
+        struct CSocketConnectionException : CSocketException { using CSocketException::CSocketException ; } ;
+        struct CSocketInitException       : CSocketException { using CSocketException::CSocketException ; } ;
+        struct CSocketReadException       : CSocketException { using CSocketException::CSocketException ; } ;
+        struct CSocketWriteException      : CSocketException { using CSocketException::CSocketException ; } ;
+        struct CSocketListenException     : CSocketException { using CSocketException::CSocketException ; } ;
+        struct CSocketAcceptException     : CSocketException { using CSocketException::CSocketException ; } ;
+        struct CSocketConnectException    : CSocketException { using CSocketException::CSocketException ; } ;
+        struct CSocketBindException       : CSocketException { using CSocketException::CSocketException ; } ; 
+        struct CSocketSetOptionException  : CSocketException { using CSocketException::CSocketException ; } ;
+        struct CSocketLogicException      : CSocketException { using CSocketException::CSocketException ; } ;
     } // ip
 } // network
 

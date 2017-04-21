@@ -11,7 +11,6 @@
 #include "Types.hxx"
 #include "CIPAddress.hxx"
 
-/* todo : const std::string& -> std::string in paramters ( when CIPAddress get changed ) */
 // NOTE : the behaviour is implementation-defined if ( for current version ) :
 //              * passed addresses contain leading zeros or whitespaces ;
 //              * ipv6 socket attempted to accept ipv4 connection ;
@@ -82,12 +81,15 @@ namespace network
             std::size_t write ( const std::uint8_t * src , std::size_t sz , std::initializer_list< EWriteFlags > = {} ) ;
             std::size_t write ( const std::string& str , std::initializer_list< EWriteFlags > = {} ) ;
             std::size_t read  ( std::uint8_t * dst , std::size_t sz , std::initializer_list< EReadFlags > = {} ) ;
-
+            
+            // guaranties, that all data will be sent. (Espessially when DONT_WAIT is set)
+            // if exception is thrown, ... ( todo documentation )
             void write_all ( std::uint8_t * dst , std::size_t bucket_size , std::initializer_list< EWriteFlags > = {} ) ;
+            
             void read_all ( std::vector< std::uint8_t >& , std::initializer_list< EReadFlags > = {} ) ; // optional
             void set_option( const struct ISocketOption& option ) ; 
             
-            CSocket duplicate () ; // dup() socket file descriptor ( or WSADuplicateSocket for windows handlers )
+            CSocket duplicate () ; // dup2() socket file descriptor ( or WSADuplicateSocket for windows handlers )
             void shutdown ( EShutdown ) ;
             
             private :

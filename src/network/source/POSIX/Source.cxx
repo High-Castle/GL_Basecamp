@@ -18,6 +18,12 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#include <errno.h> 
+
+// todo : handle SIGPIPE
+// todo : write_all
+// todo : select / poll
+
 namespace network
 {
     namespace ip
@@ -241,6 +247,7 @@ namespace ip {
             std::cerr << "cerr : " << __func__ << " : " << "getsockname() failed" ;
             return {} ;
         }
+        
         CIPAddress bound_addr ; // will be removed in next updates
         
         if ( ! get_address( ( ::sockaddr * ) &addr , bound_addr.addr_ , &bound_addr.port_ , &bound_addr.family_ ) ) 
@@ -248,6 +255,7 @@ namespace ip {
             std::cerr << "cerr : " << __func__ << " : " << "problems on getting address" ;
             return {} ;
         }
+        
         return bound_addr ;
     }
 
@@ -281,7 +289,12 @@ namespace ip {
             throw CSocketLogicException( "Logic Error, attempt to listen with datagram socket" ) ;
         
         if ( ::listen( impl() -> sock_ , queue_length ) == - 1 ) 
-            throw CSocketListenException( "Listen Error" ) ;
+        {
+            switch ( errno )
+            {
+            }
+            throw CSocketListenException( "Listen Exception" ) ;
+        }
     }
     
 
@@ -290,10 +303,24 @@ namespace ip {
         if ( ! is_connected() ) 
             throw CSocketLogicException( "Logic Error on write, socket is not connected" ) ;
         
-        ::ssize_t bytes_written = ::send( impl() -> sock_ , src , sz , FLAGS_eval( flags.begin() , flags.end() ) ) ;
+        int flg_mask = FLAGS_eval( flags.begin() , flags.end() ) ;
+        ::ssize_t bytes_written = ::send( impl() -> sock_ , src , sz , MSG_NOSIGNAL | flg_mask ) ;
         
-        if ( bytes_written == - 1 ) 
-            throw CSocketWriteException( "Write Error" ) ;
+        if ( bytes_written == - 1 ) {
+            switch ( errno )
+            {
+                case ECONNRESET : throw CSocketConnectionException( "Connection on Write Exception : Connection is reset by peer" ) ;
+                case EPIPE      : throw CSocketConnectionException( "Connection on Write Exception : Broken Pipe" ) ;
+                
+                case ENOMEM     : throw CSocketWriteException( "Write Exception : No Memory Available" ) ;
+                case EFAULT     : throw CSocketWriteException( "Write Exception : Bad buffer pointer passed" ) ;
+                
+                // AS ASSERTIONS : 
+                case EBADF      : throw CSocketWriteException( "Write Exception : Bad socket" ) ;
+                case EINVAL     : throw CSocketWriteException( "Write Exception : Invalid argument passed" ) ;
+            }
+            throw CSocketWriteException( "Read Exception" ) ;
+        }
         
         return bytes_written ;
     }
@@ -304,9 +331,23 @@ namespace ip {
             throw CSocketLogicException( "Logic Error on read, socket is not connected" )  ;
         
         ::ssize_t bytes_read = ::recv( impl() -> sock_ , dst , sz , FLAGS_eval( flags.begin() , flags.end() ) ) ;
-        
-        if ( bytes_read == - 1 ) 
-            throw CSocketWriteException( "Read Error" ) ;
+       
+        if ( bytes_read <= 0 )
+        {
+            switch ( errno )
+            {
+                case ECONNRESET : throw CSocketConnectionException( "Connection on Read Exception : Connection is reset by peer" ) ;
+                case ENOMEM     : throw CSocketReadException( "Read Exception : No Memory Available" ) ;
+                // AS ASSERTIONS : 
+                case EBADF      : throw CSocketReadException( "Read Exception : Bad socket" ) ;
+                case EINVAL     : throw CSocketReadException( "Read Exception : Invalid argument passed" ) ;
+            }
+            
+            if ( bytes_read == 0 )
+                throw CSocketConnectionException( "Connection on Read Exception : Probably you shutdown the socket for read" ) ;
+            
+            throw CSocketReadException( "Read Exception" ) ;
+        }
         
         return bytes_read ;
     }
@@ -324,10 +365,16 @@ namespace ip {
         ip_address addr {} ;
         
         if ( ! set_address( current_af , addr_str.c_str() , port , ( ::sockaddr * ) &addr ) ) 
-            throw CSocketListenException( "Connection Error while loading address" ) ;
+            throw CSocketConnectException( "Connection Error while loading address" ) ;
         
         if ( ::connect( impl() -> sock_ , ( ::sockaddr * ) &addr , sizeof( ip_address ) ) == - 1 ) 
-            throw CSocketListenException( "Connection Error" ) ;
+        {
+            switch ( errno )
+            {
+                
+            }
+            throw CSocketConnectException( "Connect Exception" ) ;
+        }
     
         impl() -> is_connected_ = true ; // commit ;
         impl() -> is_bound_ = true ;
@@ -341,10 +388,15 @@ namespace ip {
         ip_address addr {} ;
         
         if ( ! set_address( current_af , addr_str.c_str() , port , ( ::sockaddr * ) &addr ) ) 
-            throw CSocketListenException( "Bind Error while loading address" ) ;
+            throw CSocketBindException( "Bind Error while loading address" ) ;
         
         if ( ::bind( impl() -> sock_ , ( ::sockaddr * ) &addr , sizeof( ip_address ) ) == - 1 ) 
-            throw CSocketListenException( "Bind Error" ) ;
+        {
+            switch ( errno )
+            {
+            }
+            throw CSocketBindException( "Connect Exception" ) ;
+        }
         
         impl() -> is_bound_ = true ; // commit ;
     }
@@ -352,7 +404,10 @@ namespace ip {
     CSocket CSocket::accept ()  
     {
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
-            
+        
+        if ( impl() -> info_.socket_type_ == ESocketType::DATAGRAM ) 
+            throw CSocketLogicException( "Logic Error, attempt to accept with datagram socket" ) ;   
+        
         auto impl_p = std::unique_ptr< CImplementation >{ new CImplementation } ; // def
             
         ip_address addr {} ;
@@ -361,7 +416,14 @@ namespace ip {
             impl_p -> sock_ = ::accept( impl() -> sock_ , ( ::sockaddr * ) &addr , &addrlen ) ; }
             
         if ( impl_p -> sock_ == - 1 ) 
+        {
+            switch ( errno )
+            {
+                
+            }
             throw CSocketAcceptException( "Accept Exception" ) ;
+        }
+        
         // noexcept :
         impl_p -> info_ = impl() -> info_ ;
         impl_p -> is_connected_ = true ;
@@ -381,8 +443,10 @@ namespace ip {
               
     void CSocket::write_all ( std::uint8_t * dst , std::size_t bucket_size , std::initializer_list< EWriteFlags > flags ) 
     {
-        if ( is_empty() ) throw CSocketLogicException( "Logic Error on write, socket is not connected" ) ;
-        if ( ! is_empty() ) throw CSocketLogicException( "Logic Error on read, socket is not connected" ) ;
+        if ( is_empty() ) 
+            throw CSocketLogicException( null_error ) ;
+        
+        
     }
 
     /* 

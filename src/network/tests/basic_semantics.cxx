@@ -25,7 +25,7 @@ int main ()
         
         ip::CSocket acc_sock = sock.accept() ;
         
-        acc_sock.write( "ip::CSocket" ) ; // aproove.?
+        acc_sock.write( "ip::CSocket" ) ; 
         
         std::cout << sock.bound_address().address() << " " << sock.bound_address().port() << "\n" ;
     }
