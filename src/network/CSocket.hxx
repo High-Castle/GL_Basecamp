@@ -89,7 +89,7 @@ namespace network
             void read_all ( std::vector< std::uint8_t >& , std::initializer_list< EReadFlags > = {} ) ; // optional
             void set_option( const struct ISocketOption& option ) ; 
             
-            CSocket duplicate () ; // dup2() socket file descriptor ( or WSADuplicateSocket for windows handlers )
+            CSocket duplicate () ; // dup() socket file descriptor ( or WSADuplicateSocket for windows handlers )
             void shutdown ( EShutdown ) ;
             
             private :
