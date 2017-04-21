@@ -41,6 +41,7 @@ namespace network
                     CBasicException ( message ) {}
         } ;
         // do not confuse CSocketConnectionException with CSocketConnectException
+        // CSocketConnectException is thrown only on attempt to establish connection ( connect member )
         struct CSocketConnectionException : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketInitException       : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketReadException       : CSocketException { using CSocketException::CSocketException ; } ;
