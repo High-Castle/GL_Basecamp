@@ -40,12 +40,17 @@ namespace network
             CBadIPAddress( const char * message ) noexcept : 
                     CBasicException ( message ) {}
         } ;
+        
         // do not confuse CSocketConnectionException with CSocketConnectException
         // CSocketConnectException is thrown only on attempt to establish connection ( connect member )
         struct CSocketConnectionException : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketInitException       : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketReadException       : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketWriteException      : CSocketException { using CSocketException::CSocketException ; } ;
+        
+        struct CSocketReadAttemptException   : CSocketException { using CSocketException::CSocketException ; } ;
+        struct CSocketWriteAttemptException  : CSocketException { using CSocketException::CSocketException ; } ;
+        
         struct CSocketListenException     : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketAcceptException     : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketConnectException    : CSocketException { using CSocketException::CSocketException ; } ;

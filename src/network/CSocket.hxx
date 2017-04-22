@@ -4,6 +4,7 @@
 #include <memory>
 #include <cstring>
 #include <vector>
+#include <exception>
 
 #include <initializer_list>
 
@@ -79,14 +80,14 @@ namespace network
             void connect ( const std::string& address , port_type port ) ;
             
             std::size_t write ( const std::uint8_t * src , std::size_t sz , std::initializer_list< EWriteFlags > = {} ) ;
-            std::size_t write ( const std::string& str , std::initializer_list< EWriteFlags > = {} ) ;
             std::size_t read  ( std::uint8_t * dst , std::size_t sz , std::initializer_list< EReadFlags > = {} ) ;
             
-            // guaranties, that all data will be sent. (Espessially when DONT_WAIT is set)
-            // if exception is thrown, ... ( todo documentation )
-            void write_all ( std::uint8_t * dst , std::size_t bucket_size , std::initializer_list< EWriteFlags > = {} ) ;
+            // guaranties, that all data will be sent.
+            void write_all ( const std::uint8_t * , std::size_t , std::size_t& , std::initializer_list< EWriteFlags > = {} ) ;
+            void write_all ( const std::string& , std::size_t& , std::initializer_list< EWriteFlags > flags = {} ) ;
             
             void read_all ( std::vector< std::uint8_t >& , std::initializer_list< EReadFlags > = {} ) ; // optional
+            
             void set_option( const struct ISocketOption& option ) ; 
             
             CSocket duplicate () ; // dup() socket file descriptor ( or WSADuplicateSocket for windows handlers )

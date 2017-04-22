@@ -25,7 +25,16 @@ int main ()
         
         ip::CSocket acc_sock = sock.accept() ;
         
-        acc_sock.write( "ip::CSocket" ) ; 
+        std::size_t written ;
+        
+        try 
+        { 
+            acc_sock.write_all( "ip::CSocket" , written , { ip::EWriteFlags::DONT_WAIT } ) ; 
+        } 
+            catch ( const ip::CSocketWriteAttemptException& e )
+            {
+                std::cerr << e.what() ;
+            }
         
         std::cout << sock.bound_address().address() << " " << sock.bound_address().port() << "\n" ;
     }
@@ -34,7 +43,6 @@ int main ()
         std::cerr << e.what() << "\n" ;
     }
         
-    
     ip::CIPAddress addr { ip::EAddressFamily::IPv4 , "192.168.67.5" , 1235 } ;
     ip::CIPAddress addr2 ;
     assert( addr.is_valid_string() ) ;

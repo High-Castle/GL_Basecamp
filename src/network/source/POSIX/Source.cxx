@@ -6,6 +6,8 @@
 #include <string>
 
 #include <initializer_list>
+#include <utility>
+#include <exception>
 
 #include "Exception.hxx"
 #include "CIPAddress.hxx"
@@ -21,13 +23,12 @@
 #include <errno.h> // NOTE : errno is thread-safe (thread_local variable)
 
 
-// TODO : handle SIGPIPE .done
-// TODO : write_all      
+     
 // TODO : select / poll
-
 // TODO : timeout options
 
 // TODO : WIN support
+
 
 namespace network
 {
@@ -303,65 +304,82 @@ namespace ip {
         }
     }
     
+    namespace 
+    {
+        std::size_t no_checks_write ( sock_handle_type sock , const std::uint8_t * src , std::size_t sz , int flg_mask )
+        {
+            ::ssize_t bytes_written = ::send( sock , src , sz , MSG_NOSIGNAL | flg_mask ) ;
+        
+            if ( bytes_written == - 1 ) {
+                switch ( errno )
+                {
+#if EAGAIN != EWOULDBLOCK 
+                    case EAGAIN :
+                    case EWOULDBLOCK :
+#else
+                    case EWOULDBLOCK :
+#endif
+                        throw CSocketWriteAttemptException( "Write Exception : Buffer is full ( the socket is non-blocking ) or timeout expired" ) ;
+                
+                    case ECONNRESET : throw CSocketConnectionException( "Connection on Write Exception : Connection is reset by peer" ) ;
+                    case EPIPE      : throw CSocketConnectionException( "Connection on Write Exception : Broken Pipe" ) ;
+                
+                    case ENOMEM     : throw CSocketWriteException( "Write Exception : No Memory Available" ) ;
+                    case EFAULT     : throw CSocketWriteException( "Write Exception : Bad buffer pointer passed" ) ;
 
+                    case EBADF      : throw CSocketWriteException( "Write Exception : Bad socket" ) ;
+                    case EINVAL     : throw CSocketWriteException( "Write Exception : Invalid argument passed" ) ;
+                }
+                throw CSocketWriteException( "Read Exception" ) ;
+            }
+            
+            return bytes_written ;
+        }    
+        
+        std::size_t no_checks_read ( sock_handle_type sock , std::uint8_t * dst , std::size_t sz , int flg_mask )
+        {
+            ::ssize_t bytes_read = ::recv( sock , dst , sz , flg_mask ) ;
+        
+            if ( bytes_read == - 1 )
+            {
+                switch ( errno )
+                {
+#if EAGAIN != EWOULDBLOCK 
+                    case EAGAIN :
+                    case EWOULDBLOCK :
+#else
+                    case EWOULDBLOCK :
+#endif
+                        throw CSocketReadAttemptException( "Read Exception : Nothing to read ( the socket is non-blocking ) or timeout expired" ) ;
+                        
+                    case ECONNRESET : throw CSocketConnectionException( "Connection on Read Exception : Connection is reset by peer" ) ;
+                    case ENOMEM     : throw CSocketReadException( "Read Exception : No Memory Available" ) ;
+                    
+                    case EBADF      : throw CSocketReadException( "Read Exception : Bad socket" ) ;
+                    case EINVAL     : throw CSocketReadException( "Read Exception : Invalid argument passed" ) ;
+                }
+                
+                throw CSocketReadException( "Read Exception" ) ;
+            }
+            
+            return bytes_read ;
+        }
+    }
+    
     std::size_t CSocket::write ( const std::uint8_t * src , std::size_t sz , std::initializer_list< EWriteFlags > flags )
     {
         if ( ! is_connected() ) 
             throw CSocketLogicException( "Logic Error on write, socket is not connected" ) ;
-        
-        int flg_mask = FLAGS_eval( flags.begin() , flags.end() ) ;
-        ::ssize_t bytes_written = ::send( impl() -> sock_ , src , sz , MSG_NOSIGNAL | flg_mask ) ;
-        
-        if ( bytes_written == - 1 ) {
-            switch ( errno )
-            {
-                case ECONNRESET : throw CSocketConnectionException( "Connection on Write Exception : Connection is reset by peer" ) ;
-                case EPIPE      : throw CSocketConnectionException( "Connection on Write Exception : Broken Pipe" ) ;
-                
-                case ENOMEM     : throw CSocketWriteException( "Write Exception : No Memory Available" ) ;
-                case EFAULT     : throw CSocketWriteException( "Write Exception : Bad buffer pointer passed" ) ;
-                
-                // AS ASSERTIONS : 
-                case EBADF      : throw CSocketWriteException( "Write Exception : Bad socket" ) ;
-                case EINVAL     : throw CSocketWriteException( "Write Exception : Invalid argument passed" ) ;
-            }
-            throw CSocketWriteException( "Read Exception" ) ;
-        }
-        
-        return bytes_written ;
+
+        return no_checks_write( impl() -> sock_ , src , sz , FLAGS_eval( flags.begin() , flags.end() ) ) ;
     }
 
     std::size_t CSocket::read ( std::uint8_t * dst , std::size_t sz , std::initializer_list< EReadFlags > flags )
     {
         if ( ! is_connected() ) 
             throw CSocketLogicException( "Logic Error on read, socket is not connected" )  ;
-        
-        ::ssize_t bytes_read = ::recv( impl() -> sock_ , dst , sz , FLAGS_eval( flags.begin() , flags.end() ) ) ;
-       
-        if ( bytes_read <= 0 )
-        {
-            switch ( errno )
-            {
-                case ECONNRESET : throw CSocketConnectionException( "Connection on Read Exception : Connection is reset by peer" ) ;
-                case ENOMEM     : throw CSocketReadException( "Read Exception : No Memory Available" ) ;
-                
-                // AS ASSERTIONS : 
-                case EBADF      : throw CSocketReadException( "Read Exception : Bad socket" ) ;
-                case EINVAL     : throw CSocketReadException( "Read Exception : Invalid argument passed" ) ;
-            }
-            
-            if ( bytes_read == 0 )
-                throw CSocketConnectionException( "Connection on Read Exception : Probably you shutdown the socket for read" ) ;
-            
-            throw CSocketReadException( "Read Exception" ) ;
-        }
-        
-        return bytes_read ;
-    }
     
-    std::size_t CSocket::write ( const std::string& str , std::initializer_list< EWriteFlags > flags )
-    {
-        return write( reinterpret_cast< const std::uint8_t * >( str.c_str() ) , str.length() + 1 , flags ) ;
+        return no_checks_read( impl() -> sock_ , dst , sz , FLAGS_eval( flags.begin() , flags.end() ) ) ;
     }
 
     void CSocket::connect ( const std::string& addr_str , port_type port ) 
@@ -448,15 +466,28 @@ namespace ip {
             std::cerr << "cerr : " << __func__ << " : shutdown failed" ;
     }
     
-              
-    void CSocket::write_all ( std::uint8_t * dst , std::size_t bucket_size , std::initializer_list< EWriteFlags > flags ) 
+    void CSocket::write_all ( const std::uint8_t * src , const std::size_t buff_size , std::size_t& written , std::initializer_list< EWriteFlags > flags )
     {
-        if ( is_empty() ) 
+        if ( ! is_connected() ) 
             throw CSocketLogicException( null_error ) ;
         
+        int flg_mask = FLAGS_eval( flags.begin() , flags.end() ) ;
+        written = 0 ;
+        // if ( flg_mask & MSG_DONTWAIT ) 
         
+        do {
+            written += no_checks_write( impl() -> sock_ , src + written , buff_size - written , flg_mask ) ;    
+        } while ( written < buff_size ) ;
+    }
+    
+  
+    void CSocket::write_all ( const std::string& str , std::size_t& written , std::initializer_list< EWriteFlags > flags )
+    {
+        return write_all( reinterpret_cast< const std::uint8_t * >( str.c_str() ) , str.length() + 1 , written , flags ) ;
     }
 
+    // std::tuple( ) select (  ) 
+    // poll
     /* 
 
                 
