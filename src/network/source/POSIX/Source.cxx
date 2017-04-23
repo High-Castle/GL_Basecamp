@@ -8,6 +8,7 @@
 #include <initializer_list>
 #include <utility>
 #include <exception>
+#include <chrono>
 
 #include "Exception.hxx"
 #include "CIPAddress.hxx"
@@ -45,47 +46,47 @@ namespace network
             ::sa_family_t AF_translate ( EAddressFamily af )
             {
                 static ::sa_family_t table [] { AF_INET , AF_INET6 } ;
-                static_assert( to_int( EAddressFamily::ENUM_END ) != sizeof table , "NOT ALL ADDRESS FAMILIES IMPLEMENTED" ) ;
+                static_assert( to_int( EAddressFamily::ENUM_END ) != sizeof table , "NOT ALL ADDRESS FAMILIES ARE IMPLEMENTED" ) ;
                 return table[ to_int( af ) ] ;
             }
             
             int TYPE_translate ( ESocketType type )
             {
                 static int table [] { SOCK_STREAM , SOCK_DGRAM , SOCK_SEQPACKET } ;
-                static_assert( to_int( ESocketType::ENUM_END ) != sizeof table , "NOT ALL SOCKET TYPES IMPLEMENTED" ) ;
+                static_assert( to_int( ESocketType::ENUM_END ) != sizeof table , "NOT ALL SOCKET TYPES ARE IMPLEMENTED" ) ;
                 return table[ to_int( type ) ] ;
             }
             
             int PROTO_translate ( EProtocol proto )
             {
                 static int table [] { IPPROTO_IP , IPPROTO_UDP , IPPROTO_TCP } ;
-                static_assert( to_int( EProtocol::ENUM_END ) != sizeof table , "NOT ALL PROTOCOLS IMPLEMENTED" ) ;
+                static_assert( to_int( EProtocol::ENUM_END ) != sizeof table , "NOT ALL PROTOCOLS ARE IMPLEMENTED" ) ;
                 return table[ to_int( proto ) ] ;
             }
             
             int SHUT_translate ( EShutdown how )
             {
                 static int table [] { SHUT_RD , SHUT_WR , SHUT_RDWR } ;
-                static_assert( to_int( EShutdown::ENUM_END ) != sizeof table , "NOT ALL EShutdown IMPLEMENTED" ) ;
+                static_assert( to_int( EShutdown::ENUM_END ) != sizeof table , "NOT ALL EShutdown ARE IMPLEMENTED" ) ;
                 return table[ to_int( how ) ] ;
             }
             
             template < class EnT > int FLAG_translate ( EnT flg ) = delete ;
             
             template <> int FLAG_translate <> ( EWriteFlags flg ) {
-                static int table [] { MSG_DONTWAIT } ;
-                static_assert( to_int( EWriteFlags::ENUM_END ) != sizeof table , "NOT ALL EWriteFlags IMPLEMENTED" ) ;
+                static int table [] { MSG_DONTWAIT , MSG_OOB } ;
+                static_assert( to_int( EWriteFlags::ENUM_END ) != sizeof table , "NOT ALL EWriteFlags ARE IMPLEMENTED" ) ;
                 return table[ to_int( flg ) ] ;
             }
             
             template <> int FLAG_translate <> ( EReadFlags flg ) {
-                static int table [] { MSG_DONTWAIT , MSG_WAITALL } ;
-                static_assert( to_int( EReadFlags::ENUM_END ) != sizeof table , "NOT ALL EReadFlags IMPLEMENTED" ) ;
+                static int table [] { MSG_DONTWAIT , MSG_WAITALL , MSG_OOB } ;
+                static_assert( to_int( EReadFlags::ENUM_END ) != sizeof table , "NOT ALL EReadFlags ARE IMPLEMENTED" ) ;
                 return table[ to_int( flg ) ] ;
             }
             
             template < class FlagsIt > int FLAGS_eval ( FlagsIt from , FlagsIt to ) {
-                int acc ;
+                int acc {} ;
                 for ( ; from != to ; ++ from ) 
                     acc |= FLAG_translate( * from ) ;
                 return acc ;
@@ -129,6 +130,16 @@ namespace network
         }
     }
 }
+
+namespace 
+{
+    template< class T , class U , class DU >
+    std::unique_ptr< T , DU > unique_cast( std::unique_ptr< U , DU > ptr ) noexcept
+    {
+        return std::unique_ptr< T , DU >{ static_cast< T * >( ptr.release() ) } ;
+    }
+}
+
 
 std::uint32_t network::htonl( std::uint32_t l )
 {
@@ -180,6 +191,125 @@ const network::ip::CSocket::CImplementation * network::ip::CSocket::impl () cons
 namespace network { 
 namespace ip {
 
+// options :    
+    struct ISocketOption::COptionParams : OptionParamsBase
+    {
+        COptionParams( int option , int level , ::socklen_t size ) 
+            : option_( option ) , level_( level ) , size_( size ) 
+        {
+        }
+        socklen_t size () const { return size_ ; }
+        int level () const { return level_ ; }
+        int option () const { return option_ ; }
+        virtual void * value () = 0 ;
+        virtual const void * value () const = 0 ;
+        private :
+            const int option_ , level_ ;
+            const ::socklen_t size_ ;
+    } ;
+    
+    struct CReuseAddress::CImplParams final : COptionParams
+    {
+        CImplParams ( int value ) 
+            : COptionParams( SO_REUSEADDR , SOL_SOCKET , sizeof value_ ) , 
+                value_( value ) {}
+        virtual void * value () override { return &value_ ; }
+        virtual const void * value () const override { return &value_ ; }
+        private :
+            int value_ ;
+    } ;
+    
+    CReuseAddress::CReuseAddress( bool value ) 
+        :  params_ { new CImplParams{ value } }
+    {
+    }
+    
+    bool CReuseAddress::value () const { return * reinterpret_cast< const int * >( parameters().value() ) ; }
+    auto CReuseAddress::parameters () const -> const COptionParams& { return static_cast< const CImplParams& >( * params_ ) ; }
+    auto CReuseAddress::parameters () -> COptionParams& { return static_cast< CImplParams& >( * params_ ) ; }
+    
+    struct CTimeout::CImplParams final : COptionParams
+    {
+        CImplParams ( int op , int level , microseconds value ) 
+            : COptionParams( op , level , sizeof value_ ) ,
+              value_()
+              {
+                  value_.tv_sec = std::chrono::duration_cast< seconds >( value ).count() ;
+                  value_.tv_usec = ( value % seconds{ 1 } ).count() ;
+              }
+
+        virtual void * value () override { return & value_ ; }
+        virtual const void * value () const override { return & value_ ; }
+        private :
+             ::timeval value_ ;
+    } ;
+    
+    CTimeout::CTimeout( std::unique_ptr< OptionParamsBase > impl ) 
+        : params_ { std::move( impl ) }
+    {
+    }
+    
+    microseconds CTimeout::value () const 
+    { 
+        auto delta = reinterpret_cast< const ::timeval * >( parameters().value() ) ;
+        return microseconds{ delta -> tv_usec } + seconds{ delta -> tv_sec } ; 
+    }
+    auto CTimeout::parameters () const -> const COptionParams& { return static_cast< const CImplParams& >( * params_ ) ; }
+    auto CTimeout::parameters () -> COptionParams& { return static_cast< CImplParams& >( * params_ ) ; }
+    
+    // Read / Write Timeouts :
+    
+    CReadTimeout::CReadTimeout( microseconds value ) :
+        CTimeout { std::unique_ptr< OptionParamsBase >
+            ( new CTimeout::CImplParams{ SO_RCVTIMEO , SOL_SOCKET , value } ) }
+    {
+    }
+    
+    CWriteTimeout::CWriteTimeout( microseconds value ) :
+        CTimeout { std::unique_ptr< OptionParamsBase >
+            ( new CTimeout::CImplParams{ SO_SNDTIMEO , SOL_SOCKET , value } ) }
+    {
+    }
+    
+    void CSocket::set_option( const ISocketOption& option )
+    {
+        if ( is_empty() ) throw CSocketLogicException( null_error ) ;
+        
+        auto& params = option.parameters() ;
+        
+        int result = ::setsockopt ( impl() -> sock_ , params.level() , 
+                                    params.option() , params.value() , params.size() ) ;
+        if ( result == - 1 )
+        {
+            switch ( errno )
+            {
+                // TODO
+            }
+            throw CSocketOptionException( "Set Option Error" ) ;
+        }
+    }
+    
+    void CSocket::get_option( ISocketOption& option ) const
+    {
+        if ( is_empty() ) throw CSocketLogicException( null_error ) ;
+        
+        auto& params = option.parameters() ;
+        
+        auto in_out_size = params.size() ;
+        
+        int result = ::getsockopt ( impl() -> sock_ , params.level() , 
+                                    params.option() , params.value() , &in_out_size ) ;
+        if ( result == - 1 )
+        {
+            switch ( errno )
+            {
+                // TODO
+            }
+            throw CSocketOptionException( "Get Option Error" ) ;
+        }                           
+    }
+    
+// CSocket :
     CSocket::CSocket ( EAddressFamily addr_family , ESocketType type , EProtocol proto ) 
     {
         impl_ = std::unique_ptr< CImplementation >{ new CImplementation } ;
@@ -313,6 +443,7 @@ namespace ip {
             if ( bytes_written == - 1 ) {
                 switch ( errno )
                 {
+// Assuming they are defined as macroses
 #if EAGAIN != EWOULDBLOCK 
                     case EAGAIN :
                     case EWOULDBLOCK :
@@ -329,8 +460,9 @@ namespace ip {
 
                     case EBADF      : throw CSocketWriteException( "Write Exception : Bad socket" ) ;
                     case EINVAL     : throw CSocketWriteException( "Write Exception : Invalid argument passed" ) ;
+                    case EOPNOTSUPP : throw CSocketWriteException( "Write Exception : Operation is not supported" ) ;
                 }
-                throw CSocketWriteException( "Read Exception" ) ;
+                throw CSocketWriteException( "Write Exception" ) ;
             }
             
             return bytes_written ;
@@ -357,6 +489,7 @@ namespace ip {
                     
                     case EBADF      : throw CSocketReadException( "Read Exception : Bad socket" ) ;
                     case EINVAL     : throw CSocketReadException( "Read Exception : Invalid argument passed" ) ;
+                    case EOPNOTSUPP : throw CSocketWriteException( "Write Exception : Operation is not supported" ) ;
                 }
                 
                 throw CSocketReadException( "Read Exception" ) ;
@@ -370,16 +503,16 @@ namespace ip {
     {
         if ( ! is_connected() ) 
             throw CSocketLogicException( "Logic Error on write, socket is not connected" ) ;
-
-        return no_checks_write( impl() -> sock_ , src , sz , FLAGS_eval( flags.begin() , flags.end() ) ) ;
+        int flg_mask = FLAGS_eval( flags.begin() , flags.end() ) ;
+        return no_checks_write( impl() -> sock_ , src , sz , flg_mask ) ;
     }
 
     std::size_t CSocket::read ( std::uint8_t * dst , std::size_t sz , std::initializer_list< EReadFlags > flags )
     {
-        if ( ! is_connected() ) 
-            throw CSocketLogicException( "Logic Error on read, socket is not connected" )  ;
-    
-        return no_checks_read( impl() -> sock_ , dst , sz , FLAGS_eval( flags.begin() , flags.end() ) ) ;
+        if ( ! is_bound() ) 
+            throw CSocketLogicException( "Logic Error on read, socket is not bound" )  ;
+        int flg_mask = FLAGS_eval( flags.begin() , flags.end() ) ;
+        return no_checks_read( impl() -> sock_ , dst , sz , flg_mask ) ;
     }
 
     void CSocket::connect ( const std::string& addr_str , port_type port ) 
@@ -491,17 +624,7 @@ namespace ip {
     /* 
 
                 
-    void CSocket::set_option( const ISocketOption& option )
-    {
-        if ( ! is_empty() ) throw CSocketLogicException( null_error ) ;
-        
-    }
 
-
-    void CSocket::read_all ( std::vector< uint8_t >& output_vec )
-    {
-        
-    }
 //*/
 } /* ip */ 
 } /* network */

@@ -55,7 +55,7 @@ namespace network
         struct CSocketAcceptException     : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketConnectException    : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketBindException       : CSocketException { using CSocketException::CSocketException ; } ; 
-        struct CSocketSetOptionException  : CSocketException { using CSocketException::CSocketException ; } ;
+        struct CSocketOptionException  : CSocketException { using CSocketException::CSocketException ; } ;
         struct CSocketLogicException      : CSocketException { using CSocketException::CSocketException ; } ;
     } // ip
 } // network

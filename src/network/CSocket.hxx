@@ -3,8 +3,7 @@
 
 #include <memory>
 #include <cstring>
-#include <vector>
-#include <exception>
+#include <chrono>
 
 #include <initializer_list>
 
@@ -26,8 +25,18 @@ namespace network
     
     std::string resolve( const std::string& ) ; // optional
     
+    using microseconds = std::chrono::microseconds ;
+    using milliseconds = std::chrono::milliseconds ;
+    using seconds      = std::chrono::seconds      ;
+    using minutes      = std::chrono::minutes      ; 
+    
     namespace ip 
     {
+        using network::microseconds ;
+        using network::milliseconds ;
+        using network::seconds ;
+        using network::minutes ;
+        
         enum class EShutdown : unsigned short
         {
            READ ,
@@ -39,6 +48,7 @@ namespace network
         enum class EWriteFlags : unsigned short
         {
             DONT_WAIT ,
+            OUT_OF_BAND , // TODO : handlers for SIGURG
         ENUM_END      
         } ;
         
@@ -46,6 +56,7 @@ namespace network
         {
             DONT_WAIT ,
             WHAIT_ALL ,
+            OUT_OF_BAND , // TODO : handlers for SIGURG
         ENUM_END     
         } ;
         
@@ -86,9 +97,8 @@ namespace network
             void write_all ( const std::uint8_t * , std::size_t , std::size_t& , std::initializer_list< EWriteFlags > = {} ) ;
             void write_all ( const std::string& , std::size_t& , std::initializer_list< EWriteFlags > flags = {} ) ;
             
-            void read_all ( std::vector< std::uint8_t >& , std::initializer_list< EReadFlags > = {} ) ; // optional
-            
-            void set_option( const struct ISocketOption& option ) ; 
+            void set_option( const struct ISocketOption& option ) ,
+                 get_option( ISocketOption& option ) const ;
             
             CSocket duplicate () ; // dup() socket file descriptor ( or WSADuplicateSocket for windows handlers )
             void shutdown ( EShutdown ) ;
@@ -110,31 +120,60 @@ namespace network
         
         struct ISocketOption
         {
-            friend void CSocket::set_option( const ISocketOption& option ) ;
+            friend void CSocket::set_option( const ISocketOption& option ) ,
+                        CSocket::get_option( ISocketOption& option ) const ;
             
             virtual ~ ISocketOption () = default ;
-            protected :
             
-               struct COptionParams ;
-               
+            protected :
+               struct COptionParams ; // inteded to public inherit OptionParamsBase
                struct OptionParamsBase
                {
-                   COptionParams * get () ; 
-                   const COptionParams * get () const ;
                    virtual ~ OptionParamsBase() = default ; 
                } ;
                
-               virtual std::unique_ptr< OptionParamsBase > parameters () const = 0 ;
+               virtual const COptionParams& parameters () const = 0 ;
+               virtual COptionParams& parameters () = 0 ;
         } ;
         
         // TODO : timeout options
         
         struct CReuseAddress final : ISocketOption
         {
-            CReuseAddress( bool ) ; 
+            CReuseAddress( bool = false ) ; 
+            bool value () const ;
             private :
-               std::unique_ptr< OptionParamsBase > parameters () const override ;
-               bool value_ ; 
+               struct CImplParams ; // intended to implement abstract part of COptionParams
+               const COptionParams& parameters () const override ;
+               COptionParams& parameters () override ;
+               std::unique_ptr< OptionParamsBase > params_ ; 
+        } ;
+        
+        // SO_RCVTIMEO and SO_SNDTIMEO
+        struct CTimeout : ISocketOption
+        {
+            std::chrono::microseconds value () const ;
+            protected :
+               struct CImplParams ;
+               CTimeout( std::unique_ptr< OptionParamsBase > ) ;
+            private :
+               const COptionParams& parameters () const override ;
+               COptionParams& parameters () override ;
+               std::unique_ptr< OptionParamsBase > params_ ; 
+        } ;
+        
+        struct CWriteTimeout final : CTimeout
+        {
+            CWriteTimeout( std::chrono::microseconds = {} ) ;
+            private :
+                struct CImplParams ; // optional
+        } ;
+        
+        struct CReadTimeout final : CTimeout
+        {
+            CReadTimeout( std::chrono::microseconds = {} ) ; 
+            private :
+                struct CImplParams ; // optional
         } ;
     } // ip
 } // network

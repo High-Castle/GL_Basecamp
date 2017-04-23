@@ -10,7 +10,19 @@ int main ()
 {
     namespace ip = network::ip ;
     
-    ip::CSocket sock { ip::EAddressFamily::IPv4 , ip::ESocketType::STREAM } ;
+    ip::CSocket sock { ip::EAddressFamily::IPv4 , ip::ESocketType::DATAGRAM } ;
+    
+    sock.set_option( ip::CReuseAddress{ true } ) ;
+    sock.set_option( ip::CReadTimeout{ ip::seconds{ 5 } + ip::microseconds{ 12000 } } ) ;
+    
+    {   ip::CReuseAddress opt ; 
+        sock.get_option( opt ) ;
+        assert( opt.value() ) ;   }
+    
+    {   ip::CReadTimeout opt ; 
+        sock.get_option( opt ) ;
+        std::cerr << std::chrono::duration_cast< ip::seconds >( opt.value() ).count() << "  " << ( opt.value() % ip::seconds{ 1 }).count() << "\n" ;
+    }
     
     assert( ! sock.is_empty() ) ;
     assert( ! sock.is_bound() ) ;
@@ -19,24 +31,26 @@ int main ()
     try 
     {
         //auto sock2 = std::move( sock ) ;
-        sock.bind( "0.0.0.0" , 8081 ) ;
+        //sock.connect( "127.0.0.1" , 8084 ) ;
+        sock.bind( "127.0.0.1" , 8084 ) ;
         
-        sock.listen( 1 ) ;
+        // sock.listen( 1 ) ;
         
-        ip::CSocket acc_sock = sock.accept() ;
+        // ip::CSocket acc_sock = sock.accept() ;
         
         std::size_t written ;
-        
         try 
         { 
-            acc_sock.write_all( "ip::CSocket" , written , { ip::EWriteFlags::DONT_WAIT } ) ; 
+            char message [ 35 ] ;
+            sock.read( ( std::uint8_t * ) message , sizeof message ) ;
+            std::cout << message ;
+            //sock.write_all( "ip::CSocket" , written ) ; 
         } 
-            catch ( const ip::CSocketWriteAttemptException& e )
+            catch ( const ip::CSocketReadAttemptException& e )
             {
                 std::cerr << e.what() ;
-            }
-        
-        std::cout << sock.bound_address().address() << " " << sock.bound_address().port() << "\n" ;
+            }        
+        std::cout << "\n" << sock.bound_address().address() << " " << sock.bound_address().port() << "\n" ;
     }
     catch ( const ip::CSocketException& e )
     {
