@@ -14,6 +14,7 @@ int main ()
     
     sock.set_option( ip::CReuseAddress{ true } ) ;
     sock.set_option( ip::CReadTimeout{ ip::seconds{ 5 } + ip::microseconds{ 12000 } } ) ;
+    sock.set_option( ip::CWriteTimeout{ ip::seconds{ 5 } } ) ;
     
     {   ip::CReuseAddress opt ; 
         sock.get_option( opt ) ;
