@@ -35,47 +35,11 @@ namespace transfer_protocol
             unsigned char data [ PACKAGE_DATA_SIZE ] ;
         } ;
         
-        void alignment_assertion ( ) { static_assert( alignof( CDataPackagePOD ) == 1 , "CDataPackagePOD's alignament is not 1" ) ; }
         
         
-        static send( std::istream& stream , const std::string& addr , network::ip::port_type port , std::size_t file_size , std::uint8_t split_percent )
-        {
-            using namespace network::ip ;
-            CDataPackagePOD package ;
-            stream.read( package.data , PACKAGE_DATA_SIZE ) ;  
-            
-            
-            while ( true )
-            {
-                try 
-                {
-                    peer.write( ( std::uint8_t * ) package , sizeof package ) ;  
-                }
-                    catch ( const CSocketWriteAttemptException& )
-                    {
-                        
-                    }
-            }
-            CHeaderPOD control_package ;
-            peer.read( control_package , sizeof control_package ) ;
-            
-            if ( ) 
-            {
-                switch ( control_package.errno )
-                {
-                
-                } ;
-            }
-            else 
-            {
-                stream.
-            }
-        }
+        static send( std::istream& stream , const std::string& addr , network::ip::port_type port , std::size_t file_size , std::uint8_t split_percent ) ;
     
-        static recieve( std::ostream& ,   , network::ip::port_type port )
-        {
-            
-        }
+        static recieve( std::ostream& ,   , network::ip::port_type port ) ;
         
         private :
 
@@ -87,6 +51,8 @@ namespace transfer_protocol
             //static void encrypt( CDataPackagePOD * , unsigned char * key ) ;
             //static void decrypt( CDataPackagePOD * , unsigned char * key ) ;
             static void to_network(  ) ;
-            static void from_network( )
+            static void from_network( ) ;
+            constexpr void alignment_assertion ( ) { static_assert( alignof( CDataPackagePOD ) == 1 , "CDataPackagePOD's alignament is not 1" ) ; }
+        
     } ;
 }
