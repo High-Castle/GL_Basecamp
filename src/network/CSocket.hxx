@@ -17,6 +17,8 @@
 
 // TODO : implement keepalive , O_ASYNC and way to map signal to each socket. ( select( , , 0 ) in handler or so , as platform specific feature )
 
+// FIXME : in some Linux cases, SO_RCVTIMEO can affect accept also. 
+
 namespace network 
 {
     std::uint32_t htonl( std::uint32_t ) ;

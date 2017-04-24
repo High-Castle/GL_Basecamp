@@ -21,6 +21,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#include <fcntl.h>
 #include <errno.h> // NOTE : errno is thread-safe (thread_local variable)
 
 
@@ -214,7 +215,7 @@ namespace ip {
         void getsockopt_option( sock_handle_type sock , int level , int optname ,
                                 void * optval , ::socklen_t& in_out_size )
         {
-            int result = ::getsockopt ( sock_ , level , optname , optval , &in_out_size ) ;
+            int result = ::getsockopt ( sock , level , optname , optval , &in_out_size ) ;
             if ( result == - 1 )
             {
                 switch ( errno )
@@ -248,13 +249,14 @@ namespace ip {
     struct CReuseAddress::CImplParams final : COptionParams
     {
         CImplParams ( int value ) : value_( value ) {}
-        void set( socket_handle_type sock ) const final {  
+        void set( sock_handle_type sock ) const final {  
             setsockopt_option( sock , SOL_SOCKET , SO_REUSEADDR , &value_ , sizeof value_ ) ; 
         }
-        void get( socket_handle_type sock ) final { 
+        void get( sock_handle_type sock ) final { 
             ::socklen_t in_out_size = sizeof value_ ;
             getsockopt_option( sock , SOL_SOCKET , SO_REUSEADDR , &value_ , in_out_size ) ; 
         }
+        bool value() const { return value_ ; }
         private :
             int value_ ;
     } ;
@@ -272,20 +274,20 @@ namespace ip {
     {
         CImplParams ( int value ) : value_( value ) {}
         
-        void set( socket_handle_type sock ) const final 
+        void set( sock_handle_type sock ) const final 
         { 
             if ( ! value_ ) {
-                fncl_option( sock , F_SETFLG  , O_NONBLOCK ) ;
+                fcntl_option( sock , F_SETFL  , O_NONBLOCK ) ;
                 return ;
             }
-            int falgs = fncl_option( sock , F_GETFLG ) ;
+            int flags = fcntl_option( sock , F_GETFL ) ;
             flags &= ~ O_NONBLOCK ;
-            fncl_option( sock , F_SETFLG , flags ) ;
+            fcntl_option( sock , F_SETFL , flags ) ;
         }
         
-        void get( socket_handle_type sock ) final 
+        void get( sock_handle_type sock ) final 
         { 
-            value_ = ! ( O_NONBLOCK & fncl_option( sock , F_GETFLG ) ) ; 
+            value_ = ! ( O_NONBLOCK & fcntl_option( sock , F_GETFL ) ) ; 
         }
         bool value() const { return value_ ; }
         private :
@@ -310,14 +312,14 @@ namespace ip {
                   value_.tv_sec = std::chrono::duration_cast< seconds >( value ).count() ;
                   value_.tv_usec = ( value % seconds{ 1 } ).count() ;
               }
-        void set( socket_handle_type sock ) const final {  
+        void set( sock_handle_type sock ) const final {  
             setsockopt_option( sock  , level_ , operation_ , &value_ , sizeof value_ ) ; 
         }
-        void get( socket_handle_type sock ) final { 
+        void get( sock_handle_type sock ) final { 
             ::socklen_t in_out_size = sizeof value_ ;
             getsockopt_option( sock , level_ , operation_ , &value_ , in_out_size ) ; 
         } 
-        bool value() const { return value_ ; }
+        ::timeval value() const { return value_ ; }
         private :
             ::timeval value_ ;
             const int level_ , operation_ ;
