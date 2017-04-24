@@ -1,3 +1,0 @@
-/home/burunuduk/Documents/Geany/C/Problems/GL/Buffer/Boyko_Volodymyr/src/network/build/CMakeFiles/edit_cache.dir
-/home/burunuduk/Documents/Geany/C/Problems/GL/Buffer/Boyko_Volodymyr/src/network/build/CMakeFiles/rebuild_cache.dir
-/home/burunuduk/Documents/Geany/C/Problems/GL/Buffer/Boyko_Volodymyr/src/network/build/CMakeFiles/basic_semantics.dir
