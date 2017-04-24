@@ -311,7 +311,7 @@ namespace ip {
         void set( sock_handle_type sock , bool& is_blck ) const final 
         { 
             perform_block( sock , value_ ) ;
-            is_blck = value_ ;
+            is_blck = value_ ; // FIXME : semantics error in general. ( but it doesn't matter in this case , at least for now )
         }
         
         void get( sock_handle_type , bool is_blck ) final 
