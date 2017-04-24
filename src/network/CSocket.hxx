@@ -15,6 +15,7 @@
 //              * passed addresses contain leading zeros or whitespaces ;
 //              * ipv6 socket attempted to accept ipv4 connection ;
 
+// TODO : implement keepalive , O_ASYNC and way to map signal to each socket. ( select( , , 0 ) in handler or so , as platform specific feature )
 
 namespace network 
 {
@@ -47,16 +48,15 @@ namespace network
         
         enum class EWriteFlags : unsigned short
         {
-            DONT_WAIT ,
             OUT_OF_BAND , // TODO : handlers for SIGURG
         ENUM_END      
         } ;
         
         enum class EReadFlags : unsigned short
         {
-            DONT_WAIT ,
             WHAIT_ALL ,
             OUT_OF_BAND , // TODO : handlers for SIGURG
+            PEEK ,
         ENUM_END     
         } ;
         
@@ -175,6 +175,20 @@ namespace network
             private :
                 struct CImplParams ; // optional
         } ;
+        
+        struct CBlock final : ISocketOption
+        {
+            CBlock( bool = false ) ; 
+            bool value () const ;
+            private :
+               struct CImplParams ; // intended to implement abstract part of COptionParams
+               const COptionParams& parameters () const override ;
+               COptionParams& parameters () override ;
+               std::unique_ptr< OptionParamsBase > params_ ; 
+        } ;
+        
+        
+        
     } // ip
 } // network
 

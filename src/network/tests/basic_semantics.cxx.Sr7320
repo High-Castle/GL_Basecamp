@@ -10,11 +10,11 @@ int main ()
 {
     namespace ip = network::ip ;
     
-    ip::CSocket sock { ip::EAddressFamily::IPv4 , ip::ESocketType::STREAM } ;
+    ip::CSocket sock { ip::EAddressFamily::IPv4 , ip::ESocketType::DATAGRAM } ;
     
     sock.set_option( ip::CReuseAddress{ true } ) ;
     
-    sock.set_option( ip::CReadTimeout{ ip::seconds{ 10 } } ) ;
+    sock.set_option( ip::CReadTimeout{ ip::seconds{ 1 } } ) ;
     sock.set_option( ip::CWriteTimeout{ ip::seconds{ 5 } } ) ;
     
     {   ip::CReuseAddress opt ; 
@@ -40,15 +40,15 @@ int main ()
         //sock.connect( "127.0.0.1" , 8084 ) ;
         sock.bind( "127.0.0.1" , 8084 ) ;
         
-        sock.listen( 1 ) ;
+        // sock.listen( 1 ) ;
         
-        ip::CSocket acc_sock = sock.accept() ;
+        // ip::CSocket acc_sock = sock.accept() ;
         
         std::size_t written ;
         try 
         { 
             char message [ 35 ] ; message[ 0 ] = '\0' ;
-            acc_sock.read( ( std::uint8_t * ) message , sizeof message ) ;
+            sock.read( ( std::uint8_t * ) message , sizeof message ) ;
             std::cout << message ;
             //sock.write_all( "ip::CSocket" , written ) ; 
         } 

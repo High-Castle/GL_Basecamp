@@ -36,21 +36,22 @@ namespace network
                 // todo : check address manually  
                 addr_[ 0 ] = '\0' ;
                 if ( addr_str.length () <= IP_ADDRESS_STRING_MAX_LEN )
-                    std::strcpy( addr_ , addr_str.c_str() ) ;
+                    std::strncpy( addr_ , addr_str.c_str() , IP_ADDRESS_STRING_MAX_LEN + 1 ) ;
             }
             
             CIPAddress ( const CIPAddress& adr ) noexcept
                 : port_( adr.port_ ) ,
                   family_( adr.family_ )
             {
-                std::strcpy( addr_ , adr.addr_ ) ;
+                std::strncpy( addr_ , adr.addr_ , IP_ADDRESS_STRING_MAX_LEN + 1 ) ;
             }
             
             CIPAddress& operator = ( const CIPAddress& adr ) noexcept
             {
                 port_ = adr.port_ ;
                 family_ = adr.family_ ;
-                std::strcpy( addr_ , adr.addr_ ) ;
+                std::strncpy( addr_ , adr.addr_ , IP_ADDRESS_STRING_MAX_LEN + 1 ) ;
+                return * this ;
             }
             
             std::string    address () const { return addr_ ; } 

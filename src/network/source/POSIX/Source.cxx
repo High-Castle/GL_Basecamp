@@ -43,45 +43,48 @@ namespace network
             template < class EnT , class Type = typename std::underlying_type< EnT >::type > 
             constexpr Type to_int( EnT en ) { return static_cast< Type >( en ) ; }
             
+            template < class T , std::size_t N >
+            constexpr std::size_t size( T(&)[ N ] ) { return N ; }
+            
             ::sa_family_t AF_translate ( EAddressFamily af )
             {
                 static ::sa_family_t table [] { AF_INET , AF_INET6 } ;
-                static_assert( to_int( EAddressFamily::ENUM_END ) != sizeof table , "NOT ALL ADDRESS FAMILIES ARE IMPLEMENTED" ) ;
+                static_assert( to_int( EAddressFamily::ENUM_END ) == size( table ) , "NOT ALL ADDRESS FAMILIES ARE IMPLEMENTED" ) ;
                 return table[ to_int( af ) ] ;
             }
             
             int TYPE_translate ( ESocketType type )
             {
                 static int table [] { SOCK_STREAM , SOCK_DGRAM , SOCK_SEQPACKET } ;
-                static_assert( to_int( ESocketType::ENUM_END ) != sizeof table , "NOT ALL SOCKET TYPES ARE IMPLEMENTED" ) ;
+                static_assert( to_int( ESocketType::ENUM_END ) == size( table ) , "NOT ALL SOCKET TYPES ARE IMPLEMENTED" ) ;
                 return table[ to_int( type ) ] ;
             }
             
             int PROTO_translate ( EProtocol proto )
             {
                 static int table [] { IPPROTO_IP , IPPROTO_UDP , IPPROTO_TCP } ;
-                static_assert( to_int( EProtocol::ENUM_END ) != sizeof table , "NOT ALL PROTOCOLS ARE IMPLEMENTED" ) ;
+                static_assert( to_int( EProtocol::ENUM_END ) == size( table ) , "NOT ALL PROTOCOLS ARE IMPLEMENTED" ) ;
                 return table[ to_int( proto ) ] ;
             }
             
             int SHUT_translate ( EShutdown how )
             {
                 static int table [] { SHUT_RD , SHUT_WR , SHUT_RDWR } ;
-                static_assert( to_int( EShutdown::ENUM_END ) != sizeof table , "NOT ALL EShutdown ARE IMPLEMENTED" ) ;
+                static_assert( to_int( EShutdown::ENUM_END ) == size( table ) , "NOT ALL EShutdown ARE IMPLEMENTED" ) ;
                 return table[ to_int( how ) ] ;
             }
             
             template < class EnT > int FLAG_translate ( EnT flg ) = delete ;
             
             template <> int FLAG_translate <> ( EWriteFlags flg ) {
-                static int table [] { MSG_DONTWAIT , MSG_OOB } ;
-                static_assert( to_int( EWriteFlags::ENUM_END ) != sizeof table , "NOT ALL EWriteFlags ARE IMPLEMENTED" ) ;
+                static int table [] { MSG_OOB } ;
+                static_assert( to_int( EWriteFlags::ENUM_END ) == size( table ) , "NOT ALL EWriteFlags ARE IMPLEMENTED" ) ;
                 return table[ to_int( flg ) ] ;
             }
             
             template <> int FLAG_translate <> ( EReadFlags flg ) {
-                static int table [] { MSG_DONTWAIT , MSG_WAITALL , MSG_OOB } ;
-                static_assert( to_int( EReadFlags::ENUM_END ) != sizeof table , "NOT ALL EReadFlags ARE IMPLEMENTED" ) ;
+                static int table [] { MSG_WAITALL , MSG_OOB , MSG_PEEK } ;
+                static_assert( to_int( EReadFlags::ENUM_END ) == size( table ) , "NOT ALL EReadFlags ARE IMPLEMENTED" ) ;
                 return table[ to_int( flg ) ] ;
             }
             
@@ -192,29 +195,66 @@ namespace network {
 namespace ip {
 
 // options :    
+    namespace 
+    {
+        void setsockopt_option( sock_handle_type sock , int level , int optname ,
+                                const void * optval , ::socklen_t optlen )
+        {
+            int result = ::setsockopt( sock , level , optname , optval , optlen ) ;
+            if ( result == - 1 )
+            {
+                switch ( errno )
+                {
+                    // TODO
+                }
+                throw CSocketOptionException( "Set Option Error" ) ;
+            }
+        }
+        
+        void getsockopt_option( sock_handle_type sock , int level , int optname ,
+                                void * optval , ::socklen_t& in_out_size )
+        {
+            int result = ::getsockopt ( sock_ , level , optname , optval , &in_out_size ) ;
+            if ( result == - 1 )
+            {
+                switch ( errno )
+                {
+                    // TODO
+                }
+                throw CSocketOptionException( "Get Option Error" ) ;
+            }                           
+        }
+        template < class... Args > 
+        int fcntl_option ( sock_handle_type sock , int operation , Args... args )
+        {
+            int result = ::fcntl( sock , operation , args... ) ; /* <- primitives */
+            if ( result == - 1 ) 
+            {
+                switch ( errno )
+                {
+                   // TODO 
+                }
+            }
+            return result ;
+        }
+    }
+    
     struct ISocketOption::COptionParams : OptionParamsBase
     {
-        COptionParams( int option , int level , ::socklen_t size ) 
-            : option_( option ) , level_( level ) , size_( size ) 
-        {
-        }
-        socklen_t size () const { return size_ ; }
-        int level () const { return level_ ; }
-        int option () const { return option_ ; }
-        virtual void * value () = 0 ;
-        virtual const void * value () const = 0 ;
-        private :
-            const int option_ , level_ ;
-            const ::socklen_t size_ ;
+        virtual void set ( sock_handle_type ) const = 0 ; 
+        virtual void get ( sock_handle_type ) = 0 ;
     } ;
     
     struct CReuseAddress::CImplParams final : COptionParams
     {
-        CImplParams ( int value ) 
-            : COptionParams( SO_REUSEADDR , SOL_SOCKET , sizeof value_ ) , 
-                value_( value ) {}
-        virtual void * value () override { return &value_ ; }
-        virtual const void * value () const override { return &value_ ; }
+        CImplParams ( int value ) : value_( value ) {}
+        void set( socket_handle_type sock ) const final {  
+            setsockopt_option( sock , SOL_SOCKET , SO_REUSEADDR , &value_ , sizeof value_ ) ; 
+        }
+        void get( socket_handle_type sock ) final { 
+            ::socklen_t in_out_size = sizeof value_ ;
+            getsockopt_option( sock , SOL_SOCKET , SO_REUSEADDR , &value_ , in_out_size ) ; 
+        }
         private :
             int value_ ;
     } ;
@@ -224,24 +264,63 @@ namespace ip {
     {
     }
     
-    bool CReuseAddress::value () const { return * reinterpret_cast< const int * >( parameters().value() ) ; }
+    bool CReuseAddress::value () const { return static_cast< const CImplParams& >( parameters() ).value() ; }
     auto CReuseAddress::parameters () const -> const COptionParams& { return static_cast< const CImplParams& >( * params_ ) ; }
     auto CReuseAddress::parameters () -> COptionParams& { return static_cast< CImplParams& >( * params_ ) ; }
+    
+    struct CBlock::CImplParams final : COptionParams
+    {
+        CImplParams ( int value ) : value_( value ) {}
+        
+        void set( socket_handle_type sock ) const final 
+        { 
+            if ( ! value_ ) {
+                fncl_option( sock , F_SETFLG  , O_NONBLOCK ) ;
+                return ;
+            }
+            int falgs = fncl_option( sock , F_GETFLG ) ;
+            flags &= ~ O_NONBLOCK ;
+            fncl_option( sock , F_SETFLG , flags ) ;
+        }
+        
+        void get( socket_handle_type sock ) final 
+        { 
+            value_ = ! ( O_NONBLOCK & fncl_option( sock , F_GETFLG ) ) ; 
+        }
+        bool value() const { return value_ ; }
+        private :
+            int value_ ;
+    } ;
+    
+    CBlock::CBlock( bool value ) 
+        :  params_ { new CImplParams{ value } }
+    {
+    }
+    
+    bool CBlock::value () const { return static_cast< const CImplParams& >( parameters() ).value() ; }
+    auto CBlock::parameters () const -> const COptionParams& { return static_cast< const CImplParams& >( * params_ ) ; }
+    auto CBlock::parameters () -> COptionParams& { return static_cast< CImplParams& >( * params_ ) ; }
     
     struct CTimeout::CImplParams final : COptionParams
     {
         CImplParams ( int op , int level , microseconds value ) 
-            : COptionParams( op , level , sizeof value_ ) ,
-              value_()
+            : level_( level ) , operation_( op )  
               {
+                  value_ = ::timeval{} ;
                   value_.tv_sec = std::chrono::duration_cast< seconds >( value ).count() ;
                   value_.tv_usec = ( value % seconds{ 1 } ).count() ;
               }
-
-        virtual void * value () override { return & value_ ; }
-        virtual const void * value () const override { return & value_ ; }
+        void set( socket_handle_type sock ) const final {  
+            setsockopt_option( sock  , level_ , operation_ , &value_ , sizeof value_ ) ; 
+        }
+        void get( socket_handle_type sock ) final { 
+            ::socklen_t in_out_size = sizeof value_ ;
+            getsockopt_option( sock , level_ , operation_ , &value_ , in_out_size ) ; 
+        } 
+        bool value() const { return value_ ; }
         private :
-             ::timeval value_ ;
+            ::timeval value_ ;
+            const int level_ , operation_ ;
     } ;
     
     CTimeout::CTimeout( std::unique_ptr< OptionParamsBase > impl ) 
@@ -251,8 +330,8 @@ namespace ip {
     
     microseconds CTimeout::value () const 
     { 
-        auto delta = reinterpret_cast< const ::timeval * >( parameters().value() ) ;
-        return microseconds{ delta -> tv_usec } + seconds{ delta -> tv_sec } ; 
+        auto delta = static_cast< const CImplParams& >( parameters() ).value() ;
+        return microseconds{ delta.tv_usec } + seconds{ delta.tv_sec } ; 
     }
     auto CTimeout::parameters () const -> const COptionParams& { return static_cast< const CImplParams& >( * params_ ) ; }
     auto CTimeout::parameters () -> COptionParams& { return static_cast< CImplParams& >( * params_ ) ; }
@@ -271,43 +350,23 @@ namespace ip {
     {
     }
     
-    void CSocket::set_option( const ISocketOption& option )
-    {
-        if ( is_empty() ) throw CSocketLogicException( null_error ) ;
-        
-        auto& params = option.parameters() ;
-        
-        int result = ::setsockopt ( impl() -> sock_ , params.level() , 
-                                    params.option() , params.value() , params.size() ) ;
-        if ( result == - 1 )
-        {
-            switch ( errno )
-            {
-                // TODO
-            }
-            throw CSocketOptionException( "Set Option Error" ) ;
-        }
-    }
-    
+
     void CSocket::get_option( ISocketOption& option ) const
     {
         if ( is_empty() ) throw CSocketLogicException( null_error ) ;
-        
-        auto& params = option.parameters() ;
-        
-        auto in_out_size = params.size() ;
-        
-        int result = ::getsockopt ( impl() -> sock_ , params.level() , 
-                                    params.option() , params.value() , &in_out_size ) ;
-        if ( result == - 1 )
-        {
-            switch ( errno )
-            {
-                // TODO
-            }
-            throw CSocketOptionException( "Get Option Error" ) ;
-        }                           
+        option.parameters().get( impl() -> sock_ ) ;       
     }
+    
+    void CSocket::set_option( const ISocketOption& option )
+    {
+        if ( is_empty() ) throw CSocketLogicException( null_error ) ;
+        option.parameters().set( impl() -> sock_ ) ;
+    }
+    
+    
+    
+    
+    
     
 // CSocket :
     CSocket::CSocket ( EAddressFamily addr_family , ESocketType type , EProtocol proto ) 
