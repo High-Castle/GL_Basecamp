@@ -52,7 +52,7 @@ namespace
             {
                 if ( ::WSAStartup( MAKEWORD( 2,2 ) , &wsa_data ) == SOCKET_ERROR )
                     throw network::ip::CSocketInitException( "Socket Init Error : WSAStartup Failed" ) ;
-                std::atexit( [] () // DO NOT PLACE THAT IN DESTRUCTOR, NEVER. functions, that are set with std::atexit, will be called before destruction of globals,
+                std::atexit( [] () // functions, that are set with std::atexit, will be called before destruction of globals,
                 {
                     ::WSACleanup() ;
                 } ) ; 
