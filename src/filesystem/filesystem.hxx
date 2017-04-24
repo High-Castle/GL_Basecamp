@@ -23,14 +23,11 @@ namespace filesystem
     //      changes current directory to specified
     // exceptions :
     //      CFilesystemException if an error occured
-    void cd    ( const char * ) ;              
-    
+    void cd    ( const char * ) ;             
     void lock_file ( const char * ) ;
     void unlock_file ( const char * ) noexcept ;
     
     void mkdir ( const char * ) ;
-    void rm    ( const char * ) ;
-    void mv    ( const char * , const char * ) ;
 
     struct CFilesystemException : CBasicException
     {

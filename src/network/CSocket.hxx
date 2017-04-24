@@ -15,9 +15,12 @@
 //              * passed addresses contain leading zeros or whitespaces ;
 //              * ipv6 socket attempted to accept ipv4 connection ;
 
-// TODO : implement keepalive , O_ASYNC and way to map signal to each socket. ( select( , , 0 ) in handler or so , as platform specific feature )
+// TODO : select , keepalive , O_ASYNC and way to map signal to each socket. ( select( , , 0 ) in handler or so , as platform specific feature )
 
-// FIXME : in some Linux cases, SO_RCVTIMEO can affect accept also. 
+// FIXME / TODO (?) : on some Linuxes, SO_RCVTIMEO can affect listen also. The behaviour is implementation-defined in current version, 
+//                    just do not set the option on socket, that is inteded to be an acceptor.
+//                    ( can't think of any cases where it does matter, but that should be explored more carefully )
+//                    one among the ways to standardize this is to use select with timeout.  
 
 namespace network 
 {
