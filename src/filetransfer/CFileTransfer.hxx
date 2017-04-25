@@ -35,24 +35,17 @@ namespace transfer_protocol
             unsigned char data [ PACKAGE_DATA_SIZE ] ;
         } ;
         
+        CTransferTunnel() = delete ;
         
-        
-        static send( std::istream& stream , const std::string& addr , network::ip::port_type port , std::size_t file_size , std::uint8_t split_percent ) ;
-    
-        static recieve( std::ostream& ,   , network::ip::port_type port ) ;
+        static void send( std::istream& , const std::string& addr , network::ip::port_type port , std::size_t file_size , std::uint8_t split_percent ) ;
+        static void recieve( std::ostream& , const std::string& addr , network::ip::port_type port , std::size_t file_size , std::uint8_t split_percent ) ;
         
         private :
-
-            CDataPackagePOD package ;
-            stream.read( package.data , PACKAGE_DATA_SIZE ) ;
-
-            CTransferTunnel() ;
-            static bool check( CDataPackagePOD * ) 
+            static bool check( CDataPackagePOD * ) ;
             //static void encrypt( CDataPackagePOD * , unsigned char * key ) ;
             //static void decrypt( CDataPackagePOD * , unsigned char * key ) ;
-            static void to_network(  ) ;
-            static void from_network( ) ;
+            static void to_network( CDataPackagePOD * ) ;
+            static void from_network( CDataPackagePOD * ) ;
             constexpr void alignment_assertion ( ) { static_assert( alignof( CDataPackagePOD ) == 1 , "CDataPackagePOD's alignament is not 1" ) ; }
-        
     } ;
 }
