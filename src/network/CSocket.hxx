@@ -35,7 +35,8 @@ namespace tools
                 static_assert( noexcept( Deleter::delete_ptr( nullptr ) ) , "Deleter::delete_ptr has to be noexcept" ) ;
             }
             
-            C_UniquePtr( C_UniquePtr& ) = delete ;
+            C_UniquePtr( const C_UniquePtr& ) = delete ;
+            C_UniquePtr& operator = ( const C_UniquePtr& holder ) = delete ;
             
             C_UniquePtr( C_UniquePtr&& holder ) noexcept 
                 : ptr_( holder.ptr_ ) 

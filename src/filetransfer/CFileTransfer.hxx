@@ -32,10 +32,6 @@ namespace transfer_protocol
                              std::uint8_t split_percent ) ;
         
         private :
-            
-
-            
-            
             constexpr CTransferTunnel() { static_assert( alignof( CHeaderPOD ) == 1 , "CDataPackagePOD's alignament is not 1" };
             
             static unsigned long check( CHeaderPOD * ) ;
