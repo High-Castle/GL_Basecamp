@@ -19,17 +19,13 @@ namespace transfer_protocol
         } ;
         
         void send( std::istream& stream ,
-                   const std::string& addr , // address to connect receive to
+                   const std::string& addr , 
                    network::ip::port_type port ,
                    std::size_t file_size ,
                    const std::size_t chunck_size ,
                    const std::size_t port_jump_delta ) ;
                                 
-        static void recieve( std::ostream& ,
-                             const std::string& addr , // address to start receive on
-                             network::ip::port_type port ,
-                             std::size_t file_size ,
-                             std::uint8_t split_percent ) ;
+        static void recieve( std::ostream& , const std::string& addr , network::ip::port_type port , std::size_t file_size , std::uint8_t split_percent ) ;
         
         private :
             

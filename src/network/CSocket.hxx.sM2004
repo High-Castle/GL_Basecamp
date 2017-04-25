@@ -27,47 +27,42 @@ namespace tools
         template < class T , class Deleter >
         struct C_UniquePtr
         {
-            C_UniquePtr() noexcept : ptr_( nullptr ) { }
+            C_unique_ptr() noexcept : impl_( nullptr ) { }
             
-            explicit C_UniquePtr( T * ptr ) noexcept 
-                : ptr_( ptr )
+            explicit C_unique_ptr( T * ptr ) noexcept 
+                : impl_( ptr )
+            {}
+            
+            C_unique_ptr( C_unique_ptr& ) = delete ;
+            
+            C_unique_ptr( C_unique_ptr&& holder ) noexcept 
+                : impl_( holder.impl_ ) 
             {
-                static_assert( noexcept( Deleter::delete_ptr( nullptr ) ) , "Deleter::delete_ptr has to be noexcept" ) ;
+                holder.impl_ = nullptr ;
             }
             
-            C_UniquePtr( C_UniquePtr& ) = delete ;
-            
-            C_UniquePtr( C_UniquePtr&& holder ) noexcept 
-                : ptr_( holder.ptr_ ) 
+            C_unique_ptr& operator = ( C_unique_ptr&& holder ) noexcept
             {
-                holder.ptr_ = nullptr ;
+                impl_ = holder.impl_ ;
+                holder.impl_ = nullptr ;
             }
             
-            C_UniquePtr& operator = ( C_UniquePtr&& holder ) noexcept
-            {
-                ptr_ = holder.ptr_ ;
-                holder.ptr_ = nullptr ;
-                return * this ;
-            }
-            
-            ~ C_UniquePtr () { Deleter::delete_ptr( ptr_ ) ; }
+            ~C_unique_ptr () { impl_deleter( impl_ ) ; }
             
             void reset( T * ptr = nullptr )
             {
-                Deleter::delete_ptr( ptr_ ) ;
-                ptr_ = ptr ;
+                impl_deleter( impl_ ) ;
+                impl_ = ptr ;
             }
             
-            T       * operator -> ()       noexcept { return ptr_ ; }
-            T const * operator -> () const noexcept { return ptr_ ; }
+            T       * operator -> ()       noexcept { return impl_ ; }
+            T const * operator -> () const noexcept { return impl_ ; }
             
-            const T * get () const { return ptr_ ; }
-            T *       get () { return ptr_ ; }
-            
-            bool empty() const noexcept { return ptr_ == nullptr ; }
+            bool empty() const noexcept { return impl_ == nullptr ; }
             
             private :
-                T * ptr_ ;
+                static void impl_deleter ( T * ) noexcept ;
+                T * impl_ ;
         } ;   
 }
 
@@ -158,13 +153,10 @@ namespace network
             void shutdown ( EShutdown ) ;
             
             private :
-                struct CImplementation ; 
-                
-                struct Deleter { static void delete_ptr( CImplementation * ) noexcept ; } ;
-                using ImplHolder = tools::C_UniquePtr< CImplementation , Deleter > ;
-                
-                ImplHolder impl_ ;  
+                struct CImplementation ;
 
+                 
+                ImplHolder impl_ ;  
                 explicit CSocket ( ImplHolder ) noexcept ;
                 
                 CImplementation * impl () ; 
@@ -179,9 +171,7 @@ namespace network
             virtual ~ ISocketOption () = default ;
             
             protected :
-               
                struct COptionParams ; // inteded to public inherit OptionParamsBase
-               
                struct OptionParamsBase
                {
                    virtual ~ OptionParamsBase() = default ; 
@@ -201,7 +191,7 @@ namespace network
                struct CImplParams ; // intended to implement abstract part of COptionParams
                const COptionParams& parameters () const override ;
                COptionParams& parameters () override ;
-               std::unique_ptr< OptionParamsBase > params_ ; // for most of implementations it has to be polymorphic, so nevermind,
+               std::unique_ptr< OptionParamsBase > params_ ; 
         } ;
         
         // SO_RCVTIMEO and SO_SNDTIMEO

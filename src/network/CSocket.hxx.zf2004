@@ -27,47 +27,43 @@ namespace tools
         template < class T , class Deleter >
         struct C_UniquePtr
         {
-            C_UniquePtr() noexcept : ptr_( nullptr ) { }
+            C_UniquePtr() noexcept : impl_( nullptr ) { }
             
             explicit C_UniquePtr( T * ptr ) noexcept 
-                : ptr_( ptr )
+                : impl_( ptr )
             {
-                static_assert( noexcept( Deleter::delete_ptr( nullptr ) ) , "Deleter::delete_ptr has to be noexcept" ) ;
+                static_assert( noexcept( Deleter::delete_ptr ) , "Deleter::delete_ptr has to be noexcept" ) ;
             }
             
             C_UniquePtr( C_UniquePtr& ) = delete ;
             
             C_UniquePtr( C_UniquePtr&& holder ) noexcept 
-                : ptr_( holder.ptr_ ) 
+                : impl_( holder.impl_ ) 
             {
-                holder.ptr_ = nullptr ;
+                holder.impl_ = nullptr ;
             }
             
             C_UniquePtr& operator = ( C_UniquePtr&& holder ) noexcept
             {
-                ptr_ = holder.ptr_ ;
-                holder.ptr_ = nullptr ;
-                return * this ;
+                impl_ = holder.impl_ ;
+                holder.impl_ = nullptr ;
             }
             
-            ~ C_UniquePtr () { Deleter::delete_ptr( ptr_ ) ; }
+            ~ C_UniquePtr () { Deleter::delete_ptr( impl_ ) ; }
             
             void reset( T * ptr = nullptr )
             {
-                Deleter::delete_ptr( ptr_ ) ;
-                ptr_ = ptr ;
+                Deleter::delete_ptr( impl_ ) ;
+                impl_ = ptr ;
             }
             
-            T       * operator -> ()       noexcept { return ptr_ ; }
-            T const * operator -> () const noexcept { return ptr_ ; }
+            T       * operator -> ()       noexcept { return impl_ ; }
+            T const * operator -> () const noexcept { return impl_ ; }
             
-            const T * get () const { return ptr_ ; }
-            T *       get () { return ptr_ ; }
-            
-            bool empty() const noexcept { return ptr_ == nullptr ; }
+            bool empty() const noexcept { return impl_ == nullptr ; }
             
             private :
-                T * ptr_ ;
+                T * impl_ ;
         } ;   
 }
 
@@ -158,13 +154,17 @@ namespace network
             void shutdown ( EShutdown ) ;
             
             private :
-                struct CImplementation ; 
                 
-                struct Deleter { static void delete_ptr( CImplementation * ) noexcept ; } ;
-                using ImplHolder = tools::C_UniquePtr< CImplementation , Deleter > ;
+                struct CImplementation ;
                 
+                struct Deleter
+                {
+                    static void delete_ptr ( CImplementation * ) noexcept ;
+                } ;
+                
+                using ImplHolder = C_UniquePtr< CImplementation , Deleter > ;
+                 
                 ImplHolder impl_ ;  
-
                 explicit CSocket ( ImplHolder ) noexcept ;
                 
                 CImplementation * impl () ; 
@@ -179,14 +179,7 @@ namespace network
             virtual ~ ISocketOption () = default ;
             
             protected :
-               
                struct COptionParams ; // inteded to public inherit OptionParamsBase
-               
-               struct OptionParamsBase
-               {
-                   virtual ~ OptionParamsBase() = default ; 
-               } ;
-               
                virtual const COptionParams& parameters () const = 0 ;
                virtual COptionParams& parameters () = 0 ;
         } ;
@@ -201,7 +194,9 @@ namespace network
                struct CImplParams ; // intended to implement abstract part of COptionParams
                const COptionParams& parameters () const override ;
                COptionParams& parameters () override ;
-               std::unique_ptr< OptionParamsBase > params_ ; // for most of implementations it has to be polymorphic, so nevermind,
+               struct Deleter { static void delete_ptr ( CImplParams * ) noexcept ; } ;
+               using ImplHolder = C_UniquePtr< CImplParams , Deleter > ;
+               ImplHolder impl_ ;
         } ;
         
         // SO_RCVTIMEO and SO_SNDTIMEO
@@ -214,7 +209,9 @@ namespace network
             private :
                const COptionParams& parameters () const override ;
                COptionParams& parameters () override ;
-               std::unique_ptr< OptionParamsBase > params_ ; 
+               struct Deleter { static void delete_ptr ( CImplParams * ) noexcept ; } ;
+               using ImplHolder = C_UniquePtr< CImplParams , Deleter > ;
+               ImplHolder impl_ ;
         } ;
         
         struct CWriteTimeout final : CTimeout
@@ -239,7 +236,9 @@ namespace network
                struct CImplParams ; // intended to implement abstract part of COptionParams
                const COptionParams& parameters () const override ;
                COptionParams& parameters () override ;
-               std::unique_ptr< OptionParamsBase > params_ ; 
+               struct Deleter { static void delete_ptr ( CImplParams * ) noexcept ; } ;
+               using ImplHolder = C_UniquePtr< CImplParams , Deleter > ;
+               ImplHolder impl_ ;
         } ;
         
         

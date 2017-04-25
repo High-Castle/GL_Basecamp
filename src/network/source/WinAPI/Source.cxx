@@ -43,25 +43,34 @@ enum
 
 namespace
 {
-
-    WSADATA const& attempt_init_WSA () 
-    { 
-        static struct Init 
-        {
-            Init () 
-            {
-                if ( ::WSAStartup( MAKEWORD( 2,2 ) , &wsa_data ) == SOCKET_ERROR )
-                    throw network::ip::CSocketInitException( "Socket Init Error : WSAStartup Failed" ) ;
-                std::atexit( [] () // functions, that are set with std::atexit, will be called before destruction of globals,
-                {
-                    ::WSACleanup() ;
-                } ) ; 
-            }
-            WSADATA wsa_data ;
-        } init ;
+    struct WSA_Manager 
+    {
+        WSA_Manager() = delete ;
         
-        return init.wsa_data ;
-    }
+        static void attempt_init () 
+        { 
+            // TODO : sync ( with mutex )
+            WSADATA data ;
+            if ( ::WSAStartup( MAKEWORD( 2,2 ) , &data ) == SOCKET_ERROR )
+                throw network::ip::CSocketInitException( "Socket Init Error : WSAStartup Failed" ) ;
+            ++ clients() ;
+        }
+        
+        static void attempt_free () noexcept
+        {
+            // TODO : sync
+            -- clients() ;
+            if ( ! clients() )
+                ::WSACleanup() ;
+        }
+        
+        private :
+            static std::size_t& clients () noexcept
+            {
+                static std::size_t clients_ = 0 ; 
+                return clients_ ;
+            }
+    } ;
 }
 
 namespace network
@@ -198,7 +207,6 @@ std::uint16_t network::ntohs( std::uint16_t s )
 }
 
 struct network::ip::CSocket::CImplementation 
-                : network::ip::CSocket::ImplementationBase
 {  
     CImplementation () : is_connected_{ false } , is_bound_{ false } , is_blocking_{ true }
     { 
@@ -216,12 +224,17 @@ struct network::ip::CSocket::CImplementation
 
 network::ip::CSocket::CImplementation * network::ip::CSocket::impl ()
 {
-    return static_cast< CImplementation * >( impl_.get() ) ;
+    return impl_.get() ;
 }
 
 const network::ip::CSocket::CImplementation * network::ip::CSocket::impl () const
 {
-    return static_cast< const CImplementation * >( impl_.get() ) ;
+    return impl_.get() ;
+}
+
+void network::ip::CSocket::Deleter::delete_ptr( CImplementation * ptr ) noexcept // static member
+{
+    delete ptr ;
 }
 
 namespace network { 
@@ -398,8 +411,8 @@ namespace ip {
 // CSocket :
     CSocket::CSocket ( EAddressFamily addr_family , ESocketType type , EProtocol proto ) 
     {
-        attempt_init_WSA () ;
-        impl_ = std::unique_ptr< CImplementation >{ new CImplementation } ;
+        WSA_Manager::attempt_init() ;
+        impl_ = ImplHolder{ new CImplementation } ;
         impl() -> sock_ = ::socket( AF_translate( addr_family ) , TYPE_translate( type ) , PROTO_translate( proto ) ) ;
         
         if ( impl() -> sock_ == SOCKET_ERROR ) throw CSocketInitException( "Socket Init Error" ) ;
@@ -407,21 +420,22 @@ namespace ip {
         impl() -> info_ = CImplementation::SocketInfo{ addr_family , type , proto } ;
     }
     
-    CSocket::CSocket ( std::unique_ptr< ImplementationBase > impl_ptr ) noexcept
+    CSocket::CSocket ( ImplHolder impl_ptr ) noexcept
         : impl_( std::move( impl_ptr ) )
         {
+            WSA_Manager::attempt_init() ;
         }
     
     CSocket:: ~ CSocket () 
     { 
-        if ( is_empty() ) return ;
-        if ( ::closesocket( impl() -> sock_ ) )
+        if ( ! is_empty() && ::closesocket( impl() -> sock_ ) )
             std::cerr << __func__ << " : " << "attempt to close socket is not successful" ;
+        WSA_Manager::attempt_free () ;
     }  
     
     bool CSocket::is_empty () const noexcept 
     { 
-        return ! impl() ; 
+        return impl_.empty() ; 
     }
 
     bool CSocket::is_connected () const noexcept 
@@ -647,7 +661,7 @@ namespace ip {
         if ( impl() -> info_.socket_type_ == ESocketType::DATAGRAM ) 
             throw CSocketLogicException( "Logic Error, attempt to accept with datagram socket" ) ;   
         
-        auto impl_p = std::unique_ptr< CImplementation >{ new CImplementation } ; // def
+        auto impl_p = ImplHolder{ new CImplementation } ; // def
             
         ip_address addr {} ;
             

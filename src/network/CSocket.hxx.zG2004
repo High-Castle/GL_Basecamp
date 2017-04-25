@@ -47,7 +47,6 @@ namespace tools
             {
                 ptr_ = holder.ptr_ ;
                 holder.ptr_ = nullptr ;
-                return * this ;
             }
             
             ~ C_UniquePtr () { Deleter::delete_ptr( ptr_ ) ; }
@@ -161,7 +160,7 @@ namespace network
                 struct CImplementation ; 
                 
                 struct Deleter { static void delete_ptr( CImplementation * ) noexcept ; } ;
-                using ImplHolder = tools::C_UniquePtr< CImplementation , Deleter > ;
+                using ImplHolder = C_UniquePtr< CImplementation , Deleter > ;
                 
                 ImplHolder impl_ ;  
 

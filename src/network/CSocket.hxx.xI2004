@@ -47,7 +47,6 @@ namespace tools
             {
                 ptr_ = holder.ptr_ ;
                 holder.ptr_ = nullptr ;
-                return * this ;
             }
             
             ~ C_UniquePtr () { Deleter::delete_ptr( ptr_ ) ; }
@@ -158,14 +157,12 @@ namespace network
             void shutdown ( EShutdown ) ;
             
             private :
-                struct CImplementation ; 
+                struct CImplementation ;
                 
                 struct Deleter { static void delete_ptr( CImplementation * ) noexcept ; } ;
-                using ImplHolder = tools::C_UniquePtr< CImplementation , Deleter > ;
                 
-                ImplHolder impl_ ;  
-
-                explicit CSocket ( ImplHolder ) noexcept ;
+                std::unique_ptr< ImplementationBase > impl_ ;  
+                explicit CSocket ( std::unique_ptr< ImplementationBase > ) noexcept ;
                 
                 CImplementation * impl () ; 
                 const CImplementation * impl () const ; 
@@ -179,9 +176,7 @@ namespace network
             virtual ~ ISocketOption () = default ;
             
             protected :
-               
                struct COptionParams ; // inteded to public inherit OptionParamsBase
-               
                struct OptionParamsBase
                {
                    virtual ~ OptionParamsBase() = default ; 
