@@ -437,6 +437,7 @@ namespace ip {
             std::cerr << __func__ << " : " << "attempt to close socket is not successful" ;
         WSA_Manager::attempt_free () ;
         impl_ = std::move( sock.impl_ ) ;
+        return * this ;
     }
     
     CSocket:: ~ CSocket () 

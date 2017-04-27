@@ -1,73 +1,100 @@
+#include <istream>
 #include <chrono>
 #include <exception>
+#include <memory>
+#include <utility>
 
 #include "network/Types.hxx"
 #include "network/CSocket.hxx"
 
+
 namespace transfer_protocol 
 {
-    namespace
+    
+    void CTransferTunnel::to_network( CDataPackagePOD& data , std::uint32_t data_sz , std::uint8_t eof ) 
     {
-        // returns false if not all requested data_sz was written to a socket
-        bool send_data_from_stream( std::istream& stream , 
-                                    network::ip::CSocket& peer ,
-                                    std::size_t data_size )
-        {
-            using CTransferTunnel::PACKAGE_DATA_SIZE ;
-            
-            unsigned long num_of_full_packages = data_size / PACKAGE_DATA_SIZE ;
-            std::size_t remainder = data_size % PACKAGE_DATA_SIZE ;
-            unsigned long remainder_pack_num = remainder ? 1 : 0 ;
-            
-            for ( auto loop : { std::make_pair( num_of_full_packages , PACKAGE_DATA_SIZE ) , 
-                                std::make_pair( remainder_pack_num   , remainder ) } ) 
-            {
-                for ( unsigned long packs = 0 ; packs < loop.first ; ++ packs ) 
-                { 
-                    std::size_t const bytes_to_read = loop.second ;
-                    CTransferTunnel::CDataPackagePOD package ;
-                    
-                    if ( stream.eof() ) return false ;
-                    
-                    std::streamsize bytes_to_wirte = stream.read( package.data , bytes_to_read ).gcount() ;
-                    
-                    std::uint32_t checksum = 0 ; // calc_crc32 ;
-                    to_network( &package , ( std::uint32_t ) bytes_to_wirte , checksum ) ;
-                    
-                    std::size_t written = 0 ;
-                    for ( unsigned attempt = ATTEMPTS ; ; ) // attempt to send package
-                    {
-                        CHeaderPOD control_header ;
-                        
-                        peer.write_all( &package , sizeof package , written ) ;
-                        peer.read( &control_header , sizeof control_header ) ;
-                        
-                        switch ( control_header.type )
-                        {
-                            APROOVE : break ;
-                            
-                            PACKAGE_CANCEL :
-                                if ( ! attempts )
-                                    throw CTransferException( "PACKAGE_CANCEL" ) ;
-                                -- attempts ;
-                                continue ;
-                                
-                            TRANSFER_CANCEL :
-                                throw CTransferException( "TRANSFER_CANCEL" ) ;
-                        }
-                        
-                        break ; // all is OK.
-                    } // attempt to send package
-                } // send packages
-            }
-            return true ;
-        }
+        data.header.type = DATA ;
+        data.size = network::ip::htonl( data_sz ) ;
+        data.eof  = eof ; 
     }
+    
+    void CTransferTunnel::from_network( const CDataPackagePOD& data , std::uint32_t& data_sz , std::uint8_t& eof ) 
+    {
+        data_sz = network::ip::ntohl( data.size ) ;
+        eof     = data.eof ; 
+    }
+    
+    void CTransferTunnel::to_network( CJumpPackagePOD& jump , network::ip::port_type port ) 
+    {
+        jump.header.type = JUMP_PACKAGE ;
+        jump.port        = network::ip::htons( port ) ;
+    }
+    
+    void CTransferTunnel::from_network( const CJumpPackagePOD& jump , network::ip::port_type& port ) 
+    {
+        port = network::ip::ntohs( jump.port ) ;
+    }
+    
+
+    bool CTransferTunnel::send_from_stream( std::istream& stream , 
+                                            network::ip::CSocket& peer ,
+                                            std::size_t data_size )
+    {
+        using CTransferTunnel::PACKAGE_DATA_SIZE ;
+        using CTransferTunnel::CDataPackagePOD ;
+
+        auto buffer = std::unique_ptr< CDataPackagePOD >{ new CDataPackagePOD } ;
+        
+        unsigned long num_of_full_packages = data_size / PACKAGE_DATA_SIZE ;
+        std::size_t remainder = data_size % PACKAGE_DATA_SIZE ;
+        unsigned long remainder_pack_num = remainder ? 1 : 0 ;
+        
+        for ( auto loop : { std::make_pair( num_of_full_packages , PACKAGE_DATA_SIZE ) , 
+                            std::make_pair( remainder_pack_num   , remainder ) } ) 
+        {
+            for ( unsigned long packs = 0 ; packs != loop.first ; ++ packs ) 
+            { 
+                std::size_t const bytes_to_read = loop.second ;
+                std::streamsize bytes_to_wirte = stream.read( buffer -> data , bytes_to_read ).gcount() ;
+                
+                to_network( * buffer , ( std::uint32_t ) bytes_to_wirte , stream.eof() ) ;
+                std::size_t written ;
+                peer.write_all( buffer.get() , sizeof * buffer , written ) ;
+                
+                if ( stream.eof() ) return data_size == 0 ;
+            } // send packages
+        }
+        return true ;
+    }
+        
+    bool CTransferTunnel::recv_to_stream( std::ostream& stream , 
+                                          network::ip::CSocket& peer ,
+                                          std::size_t const data_sz )
+    {
+        using CTransferTunnel::CDataPackagePOD ;
+        
+        auto buffer = std::unique_ptr< CDataPackagePOD >{ new CDataPackagePOD } ;
+        
+        for ( std::size_t totally_received = 0 ; 
+                totally_received < data_sz ; ) 
+        {
+            std::uint32_t dsize ; std::uint8_t eof ;
+            peer.read( buffer.get() , sizeof * buffer ) ;
+            from_network( * buffer , dsize , eof ) ;
+            stream.write( buffer -> data , dsize ) ;
+            totally_received += size ;
+            if ( eof ) 
+                return false ;
+        }
+        
+        return true ;
+    }
+
     
     void CTransferTunnel::send( std::istream& stream ,
                                 const std::string& addr , 
                                 const network::ip::port_type port ,
-                                const std::size_t chunk_size ) 
+                                const std::size_t chunk_sz ) 
     {
          using namespace std::chrono ;
          using namespace network::ip ;
@@ -81,128 +108,63 @@ namespace transfer_protocol
          {
             CSocket peer { EAddressFamily::IPv4 , ESocketType::STERAM } ;
          
-            peer.set_option( CWriteTimeout{ seconds{ TIMEOUT } } ) ;
-            peer.set_option( CReadTimeout { seconds{ TIMEOUT } } ) ;
+            peer.set_option( CWriteTimeout{ seconds{ TIMEOUT_SEC } } ) ;
+            peer.set_option( CReadTimeout { seconds{ TIMEOUT_SEC } } ) ;
             
             peer.connect( addr , current_port ) ; // assert( there is a listening current_port at addr ) ;
             
-            if ( ! send_data_from_stream( stream , peer , chunk_size ) ) 
+            if ( ! send_from_stream( stream , peer , chunk_sz ) ) 
             {
-                CHeaderPOD eof { END_OF_STERAM } ;
-                peer.write_all( &eof , sizeof eof ) ;
                 return ;
             }
             
-            CHeaderPOD ok { DATA_AVAILABLE } ;
-            peer.write_all( &ok , sizeof ok ) ;
-            
-            CEndOfChunkPackagePOD eoc_package ;
+            CJumpPackagePOD jump ;
             std::uint16_t next_port ;
-            peer.read( &eoc_package , sizeof eoc_package ) ;
-            from_network( eoc_package , &next_port ) ;
-            
-            current_port = next_port ; // TODO : next_addr
+            peer.read( &jump , sizeof eoc_package ) ;
+            from_network( jump , current_port ) ;  // TODO : next_addr
          }
     }
     
-    
     void CTransferTunnel::receive( std::istream& stream ,
-                                   const std::string& addr , // from
-                                   network::ip::port_type port ,
-                                   std::size_t chunck_size )
+                                   const std::string& addr , 
+                                   const network::ip::port_type port ,
+                                   const std::size_t chunk_sz , 
+                                   unsigned short const delta_port ) 
     {
-        
-    }
-    
-    
-    
-                    // encrypt( ( std::uint8_t * ) package.data , bytes_to_wirte , key ) ; // htonsl if alg use > char
-                // checksum( (  ) ) ;
-    
-    
-/*
-    void CTransferTunnel::send( std::istream& stream ,
-                                const std::string& addr ,
-                                network::ip::port_type port ,
-                                std::size_t file_size ,
-                                std::size_t chunck_size ) 
-    {
+        using namespace std::chrono ;
         using namespace network::ip ;
         
-
-        for ( port_type current_port = port ;  
-                ; 
-              current_port += PORT_JUMP_DELTA )
+        CSocket peer { EAddressFamily::IPv4 , ESocketType::STERAM } ;
+        peer.bind( addr , port ) ;
+        peer.listen( CLIENT_QUEUE ) ;
+        
+        for ( port_type current_port = port ; ; )
         {
             
-            CSocket peer { EAddressFamily::IPv4 , ESocketType::STERAM } ;
-            peer.set_option( CWriteTimeout{ seconds{ TIMEOUT } } ) ;
-            peer.set_option( CReadTimeout{ seconds{ TIMEOUT } } ) ;
-            peer.connect( addr , current_port ) ;
+            auto source = peer.accept() ;
             
-            for ( ; ; ) // send current chunck splitted on packages  
+            if ( ! recv_to_stream( stream , source , chunk_sz ) ) 
             {
-                CDataPackagePOD package ;
-                std::streamsize bytes_to_wirte = stream.read( package.data , PACKAGE_DATA_SIZE ).gcount() ;  
-                
-                // prepeare package
-                package.pack_header.type = DATA ;
-                package.data_header.size = 
-                to_network( &package ) ;
-                
-                std::size_t bytes_written = 0 ;
-                
-                for ( std::uint8_t attepts = SEND_ATTEMPTS ; ; ) // attempt to send part
-                {
-                    CHeaderPOD control_package ;
-                    
-                    try 
-                    { 
-                        peer.write_all( ( std::uint8_t * ) package , sizeof package - bytes_written , bytes_written ) ; // send package  
-                        peer.read( ( std::uint8_t * ) control_package , sizeof control_package ) ; // reply
-                    } 
-                    catch ( const CSocketIOAttemptException& ) 
-                    {
-                        if ( ! attempts ) 
-                            throw CTransferException( "Peer is not responding" )  ;
-                        -- attempts ; 
-                        continue ;
-                    }
-                            
-                    switch ( control_package.type )
-                    {
-                        case APROOVE : 
-                            break ; 
-                            
-                        case PACK_CANCEL : 
-                            if ( ! attempts )
-                                throw CTransferException( "Peer rejected data" ) ;
-                            -- attempts ;
-                            continue ; 
-                        default :
-                            throw CTransferException( "Protocol Error" ) ;
-                    }
-                    
-                    break ; // all sent.
-                } // attempt to send part
+                return ;
+            }
             
-            } // sending all file.
+            auto new_peer = CSocket{ EAddressFamily::IPv4 , ESocketType::STERAM } ;
+            
+            for ( unsigned attempt = 0 ; attempt < BIND_ATTEMPTS ; ++ attempt ) 
+                try { new_peer.bind( addr , current_port += delta_port ) ; }   
+                catch ( const CSocketBindException& ) {
+                    if ( attempt == BIND_ATTEMPTS ) throw ; 
+                    continue ;
+                }
+           
+           peer.listen( CLIENT_QUEUE ) ;
+           
+           CJumpPackagePOD jump ;
+           to_network( jump , current_port ) ;
+           std::size_t written ;
+           peer.write_all(  ,  , written ) ;
+           
         }
-        
     }
-    
-    // static member
-    void CTransferTunnel::receive( std::istream& stream ,
-                                   const std::string& addr ,
-                                   network::ip::port_type port ,
-                                   std::size_t file_size ,
-                                   std::size_t chunck_size )
-    {
-        
-    }
-*/
-
-
-
-
 }
+
