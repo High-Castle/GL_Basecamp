@@ -10,20 +10,45 @@ namespace transfer_protocol
 /* TODO : crc32 */
 /* TODO : Encryption */
     
+    enum PackageType : unsigned char 
+    { 
+        DATA , 
+        APPROVE , 
+        PACK_CANCEL ,
+        TRANSFER_CANCEL ,
+        END_OF_STREAM ,
+        DATA_AVAILABLE
+    } ;
+            
+    struct CHeaderPOD
+    {
+         PackageType type ; 
+    } ;
+
     struct CTransferTunnel_TCP final
     {
-        struct CHeaderPOD
+        enum : unsigned { PACKAGE_DATA_SIZE = 1024 * 2 /* 2KB */ , TIMEOUT = 5 } ;
+        
+        struct CDataPackagePOD
         {
-            unsigned char checksum [ 4 ] ;
-            unsigned char size [ 8 ]  ;
+            struct CDataInfoPOD 
+            {
+                  unsigned char checksum [ 4 ] , // htonl
+			      data_size    [ 4 ] , 
+			      order_number [ 4 ] ; 
+            } ;
+            
+            CHeaderPOD   pack_header ;
+            CDataInfoPOD data_header ;
+            
+            unsigned char data [ PACKAGE_DATA_SIZE ] ;
         } ;
         
         void send( std::istream& stream ,
                    const std::string& addr , // address to connect receive to
                    network::ip::port_type port ,
                    std::size_t file_size ,
-                   const std::size_t chunck_size ,
-                   const std::size_t port_jump_delta ) ;
+                   const std::size_t chunck_size ) ;
                                 
         static void recieve( std::ostream& ,
                              const std::string& addr , // address to start receive on
@@ -36,11 +61,11 @@ namespace transfer_protocol
             
             static unsigned long check( CHeaderPOD * ) ;
             
-            static void encrypt( uint8_t * , std::size_t , unsigned char * key ) ;
-            static void decrypt( uint8_t * , std::size_t , unsigned char * key ) ;
+            static void encrypt( std::uint8_t * , std::size_t , unsigned char * key ) ;
+            static void decrypt( std::uint8_t * , std::size_t , unsigned char * key ) ;
             
-            static void to_network( CHeaderPOD * ) ;
-            static void from_network( CHeaderPOD * ) ;
+            static void to_network( CDataInfoPOD * ) ;
+            static void from_network( CDataInfoPOD * ) ;
     } ;
 
 }
@@ -53,12 +78,7 @@ namespace transfer_protocol
  /*
         
         
-        enum PackageType : unsigned char { DATA , APPROVE ,  , PACK_CANCEL } ;
-            
-        struct CHeaderPOD
-        {
-            PackageType type ; 
-        } ;
+
         
         struct CDataPackagePOD
         {

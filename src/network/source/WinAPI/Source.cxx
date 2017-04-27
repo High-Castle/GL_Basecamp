@@ -41,6 +41,11 @@ enum
 
 // TODO : PROPER EXCEPTIONS.! 
 
+using std::chrono::microseconds ;
+using std::chrono::milliseconds ;
+using std::chrono::seconds      ;
+using std::chrono::minutes      ; 
+
 namespace
 {
     struct WSA_Manager 
@@ -425,6 +430,14 @@ namespace ip {
         {
             WSA_Manager::attempt_init() ;
         }
+    
+    CSocket& CSocket::operator = ( CSocket&& sock ) noexcept
+    {
+        if ( ! is_empty() && ::closesocket( impl() -> sock_ ) )
+            std::cerr << __func__ << " : " << "attempt to close socket is not successful" ;
+        WSA_Manager::attempt_free () ;
+        impl_ = std::move( sock.impl_ ) ;
+    }
     
     CSocket:: ~ CSocket () 
     { 

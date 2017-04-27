@@ -22,10 +22,12 @@
 //                    ( can't think of any cases where it does matter, but that should be explored more carefully )
 //                    one among the ways to standardize this is to use select with timeout.  
 
+// TODO / NOTE : for nonblocking sockets use connect + select ( with optional timeout ), ( EALREADY - previous attempt to connect is not completed yet )
+
 namespace tools
 {
         template < class T , class Deleter >
-        struct C_UniquePtr
+        struct C_UniquePtr final
         {
             C_UniquePtr() noexcept : ptr_( nullptr ) { }
             
@@ -53,7 +55,7 @@ namespace tools
             
             ~ C_UniquePtr () { Deleter::delete_ptr( ptr_ ) ; }
             
-            void reset( T * ptr = nullptr )
+            void reset( T * ptr = nullptr ) noexcept
             {
                 Deleter::delete_ptr( ptr_ ) ;
                 ptr_ = ptr ;
@@ -62,8 +64,8 @@ namespace tools
             T       * operator -> ()       noexcept { return ptr_ ; }
             T const * operator -> () const noexcept { return ptr_ ; }
             
-            const T * get () const { return ptr_ ; }
-            T *       get () { return ptr_ ; }
+            const T * get () const noexcept { return ptr_ ; }
+            T *       get () noexcept { return ptr_ ; }
             
             bool empty() const noexcept { return ptr_ == nullptr ; }
             
@@ -81,18 +83,10 @@ namespace network
     
     std::string resolve( const std::string& ) ; // optional
     
-    using microseconds = std::chrono::microseconds ;
-    using milliseconds = std::chrono::milliseconds ;
-    using seconds      = std::chrono::seconds      ;
-    using minutes      = std::chrono::minutes      ; 
+
     
     namespace ip 
     {
-        using network::microseconds ;
-        using network::milliseconds ;
-        using network::seconds ;
-        using network::minutes ;
-        
         enum class EShutdown : unsigned short
         {
            READ ,
@@ -123,7 +117,7 @@ namespace network
             CSocket& operator = ( const CSocket& sock ) = delete ;
             
             CSocket( CSocket&& sock ) = default ;
-            CSocket& operator = ( CSocket&& sock ) = default  ;
+            CSocket& operator = ( CSocket&& sock ) noexcept ;
             
             ~ CSocket () ;
             

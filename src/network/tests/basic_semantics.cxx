@@ -1,5 +1,6 @@
 // POSIX implementation file
 #include <iostream>
+#include <chrono>
 
 #include "CSocket.hxx"
 #include "CIPAddress.hxx"
@@ -8,14 +9,15 @@
 
 int main () 
 {
+    using namespace std::chrono ;
     namespace ip = network::ip ;
     
     ip::CSocket sock { ip::EAddressFamily::IPv4 , ip::ESocketType::STREAM } ;
     
     sock.set_option( ip::CReuseAddress{ true } ) ;
     
-    sock.set_option( ip::CReadTimeout{ ip::seconds{ 1 } } ) ;
-    sock.set_option( ip::CWriteTimeout{ ip::seconds{ 5 } } ) ;
+    sock.set_option( ip::CReadTimeout{ seconds{ 1 } } ) ;
+    sock.set_option( ip::CWriteTimeout{ seconds{ 5 } } ) ;
     
     {   ip::CReuseAddress opt ; 
         sock.get_option( opt ) ;
@@ -23,7 +25,7 @@ int main ()
     
     {   ip::CReadTimeout opt ; 
         sock.get_option( opt ) ;
-        std::cerr << std::chrono::duration_cast< ip::seconds >( opt.value() ).count() << "  " << ( opt.value() % ip::seconds{ 1 }).count() << "\n" ;
+        std::cerr << duration_cast< seconds >( opt.value() ).count() << "  " << ( opt.value() % seconds{ 1 } ).count() << "\n" ;
     }
     
     { ip::CBlock opt ;
@@ -36,13 +38,14 @@ int main ()
     
     try 
     {
-        //auto sock2 = std::move( sock ) ;
-        //sock.connect( "127.0.0.1" , 8084 ) ;
-        sock.bind( "127.0.0.1" , 8084 ) ;
+        ip::CSocket sock2 { ip::EAddressFamily::IPv4 , ip::ESocketType::STREAM } ;
+        sock2 = std::move( sock ) ;
+       
+        sock2.bind( "127.0.0.1" , 8084 ) ;
         
-        sock.listen( 1 ) ;
+        sock2.listen( 1 ) ;
         
-        ip::CSocket acc_sock = sock.accept() ;
+        ip::CSocket acc_sock = sock2.accept() ;
         
         std::size_t written ;
         try 

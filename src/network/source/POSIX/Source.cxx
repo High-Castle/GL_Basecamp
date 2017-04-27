@@ -31,6 +31,10 @@
 
 // TODO : WIN support
 
+using std::chrono::microseconds ;
+using std::chrono::milliseconds ;
+using std::chrono::seconds      ;
+using std::chrono::minutes      ; 
 
 namespace network
 {
@@ -389,6 +393,14 @@ namespace ip {
         : impl_( std::move( impl_ptr ) )
         {
         }
+    
+    CSocket& CSocket::operator = ( CSocket&& sock ) noexcept
+    {
+        if ( ! is_empty() && ::close( impl() -> sock_ ) )
+            std::cerr << __func__ << " : " << "attempt to close socket is not successful" ;
+        impl_ = std::move( sock.impl_ ) ;
+        return * this ;
+    }
     
     CSocket:: ~ CSocket () 
     { 
