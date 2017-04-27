@@ -60,8 +60,11 @@ namespace transfer_protocol
                              const std::size_t chunck_size ,
                              unsigned short delta_port ) ;
                     // TODO : bool -> size_t ( bytes written )
-        static bool recv_to_stream( std::ostream& , network::ip::CSocket& , std::size_t ) ;
-        static bool send_from_stream( std::istream& , network::ip::CSocket& , std::size_t ) ;
+        static bool recv_amount_to_stream( std::ostream& , network::ip::CSocket& , std::size_t ) ;
+        static bool send_amount_from_stream( std::istream& , network::ip::CSocket& , std::size_t ) ;
+        
+        static void recv_stream( std::ostream& , network::ip::CSocket& ) ;
+        static void send_stream( std::istream& , network::ip::CSocket& ) ;
         
         private :
             constexpr CTransferTunnel_TCP () 
