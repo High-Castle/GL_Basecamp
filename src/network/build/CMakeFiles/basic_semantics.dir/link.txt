@@ -1,0 +1,1 @@
+/usr/bin/c++      CMakeFiles/basic_semantics.dir/tests/basic_semantics.cxx.o  -o basic_semantics -rdynamic libCSocket.a 

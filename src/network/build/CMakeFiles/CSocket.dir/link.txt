@@ -1,0 +1,2 @@
+/usr/bin/ar qc libCSocket.a  CMakeFiles/CSocket.dir/source/POSIX/Source.cxx.o
+/usr/bin/ranlib libCSocket.a
