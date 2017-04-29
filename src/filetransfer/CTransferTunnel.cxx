@@ -13,7 +13,6 @@
 
 namespace transfer_protocol 
 {
-    
     void CTransferTunnel_TCP::to_network( CDataPackagePOD& data , std::uint32_t data_sz , std::uint8_t eof ) 
     {
         data.header.type = DATA ;
@@ -38,15 +37,40 @@ namespace transfer_protocol
         port = network::ntohs( reinterpret_cast< const std::uint16_t& >( jump.port ) ) ;
     }
     
+    namespace
+    {
+        void send_data_pack( transfer_protocol::CTransferTunnel_TCP::CDataPackagePOD const * pack ,
+                             network::ip::CSocket& peer )
+        {
+            using namespace network::ip ;
+            std::size_t written ;
+            peer.write_all( ( const std::uint8_t * ) pack , sizeof * pack , written ) ;  
+            CHeaderPOD remote_is_done ; // rename
+            peer.read( ( std::uint8_t * ) &remote_is_done , sizeof( CHeaderPOD ) ) ; // 1 byte pack
+            if ( remote_is_done.type == APPROVE ) return ;
+            throw std::logic_error( "Protocol Error : Receiver declined sent packs" ) ;
+        }
+        
+        void recv_data_pack( transfer_protocol::CTransferTunnel_TCP::CDataPackagePOD * pack ,
+                             network::ip::CSocket& peer )
+        {
+            using namespace network::ip ;
+            peer.read( ( std::uint8_t * ) pack , sizeof * pack , { EReadFlags::WHAIT_ALL } ) ;
+            CHeaderPOD im_ready { APPROVE } ;
+            std::size_t written ;
+            peer.write_all( ( std::uint8_t * ) &im_ready , sizeof( CHeaderPOD ) , written ) ; // 1 byte pack
+        }
+    }
+    
     void CTransferTunnel_TCP::send_stream ( std::istream& stream , network::ip::CSocket& peer )
     {
+        using namespace network::ip ;
         auto buffer = std::unique_ptr< CDataPackagePOD >{ new CDataPackagePOD } ;
         for ( ; stream.good() ;  ) 
         { 
             std::streamsize bytes_to_wirte = stream.read( ( char * ) buffer -> data , PACKAGE_DATA_SIZE ).gcount() ;
-            to_network( * buffer , ( std::uint32_t ) bytes_to_wirte , stream.eof() ) ; 
-            std::size_t written ;
-            peer.write_all( ( const std::uint8_t * ) buffer.get() , sizeof * buffer , written ) ;
+            to_network( * buffer , ( std::uint32_t ) bytes_to_wirte , stream.eof() ) ; // NOTE : signed -> unsigned 
+            send_data_pack( buffer.get() , peer ) ;
         } 
     }
     
@@ -60,7 +84,7 @@ namespace transfer_protocol
         for ( ; ; ) 
         {
             std::uint32_t dsize ; std::uint8_t eof ;
-            peer.read( ( std::uint8_t * ) buffer.get() , sizeof * buffer , { EReadFlags::WHAIT_ALL } ) ;
+            recv_data_pack( buffer.get() , peer ) ;
             from_network( * buffer , dsize , eof ) ;
             stream.write( ( const char * ) buffer -> data , dsize ) ;
             if ( eof ) break ; 
@@ -68,8 +92,8 @@ namespace transfer_protocol
     }
     
     bool CTransferTunnel_TCP::send_amount_from_stream( std::istream& stream , 
-                                                        network::ip::CSocket& peer ,
-                                                        std::size_t data_size )
+                                                       network::ip::CSocket& peer ,
+                                                       std::size_t data_size )
     {
         std::size_t const PACKAGE_DATA_SIZE = CTransferTunnel_TCP::PACKAGE_DATA_SIZE ;
         using CDataPackagePOD = CTransferTunnel_TCP::CDataPackagePOD ;
@@ -84,8 +108,7 @@ namespace transfer_protocol
             std::streamsize bytes_to_wirte = stream.read( ( char * ) buffer -> data , PACKAGE_DATA_SIZE ).gcount() ;
 
             to_network( * buffer , ( std::uint32_t ) bytes_to_wirte , stream.eof() ) ;
-            std::size_t written ;
-            peer.write_all( ( const std::uint8_t * ) buffer.get() , sizeof * buffer , written ) ;
+            send_data_pack( buffer.get() , peer ) ;
 
             if ( ! stream.good() ) return data_size == 0 ; 
         } // send packages
@@ -96,8 +119,8 @@ namespace transfer_protocol
     
     // false if eof received
     bool CTransferTunnel_TCP::recv_amount_to_stream( std::ostream& stream , 
-                                                    network::ip::CSocket& peer ,
-                                                    std::size_t const data_sz )
+                                                     network::ip::CSocket& peer ,
+                                                     std::size_t const data_sz )
     {
         using namespace network::ip ;
         using CDataPackagePOD = CTransferTunnel_TCP::CDataPackagePOD ;
@@ -108,7 +131,7 @@ namespace transfer_protocol
         {
             std::uint32_t dsize ; std::uint8_t eof ;
             
-            peer.read( ( std::uint8_t * ) buffer.get() , sizeof * buffer , { EReadFlags::WHAIT_ALL } ) ;
+            recv_data_pack( buffer.get() , peer ) ;
             
             from_network( * buffer , dsize , eof ) ;
             stream.write( ( const char * ) buffer -> data , dsize ) ;
@@ -122,9 +145,9 @@ namespace transfer_protocol
 
     
     void CTransferTunnel_TCP::send( std::istream& stream ,
-                                const std::string& addr , 
-                                const network::ip::port_type port ,
-                                const std::size_t chunk_sz ) 
+                                    const std::string& addr , 
+                                    const network::ip::port_type port ,
+                                    const std::size_t chunk_sz ) 
     {
          using namespace std::chrono ;
          using namespace network::ip ;

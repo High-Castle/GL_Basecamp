@@ -19,7 +19,6 @@ namespace transfer_protocol
         APPROVE , 
         PACK_CANCEL ,
         TRANSFER_CANCEL ,
-        
     } ;
             
     struct CHeaderPOD
@@ -59,7 +58,7 @@ namespace transfer_protocol
                              network::ip::port_type port ,
                              const std::size_t chunck_size ,
                              unsigned short delta_port ) ;
-                    // TODO : bool -> size_t ( bytes written )
+        // TODO : bool -> size_t ( bytes written )
         static bool recv_amount_to_stream( std::ostream& , network::ip::CSocket& , std::size_t ) ;
         static bool send_amount_from_stream( std::istream& , network::ip::CSocket& , std::size_t ) ;
         

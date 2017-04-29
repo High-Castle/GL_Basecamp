@@ -24,6 +24,7 @@ namespace
         CSocket peer { EAddressFamily::IPv4 , ESocketType::STREAM } ;
         peer.connect( addr , port ) ;
         peer.set_option( CWriteTimeout{ seconds{ 5 } } ) ;
+        peer.set_option( CReadTimeout{ seconds{ 5 } } ) ;
         CTransferTunnel_TCP::send_stream( stream , peer ) ;
     }
 
@@ -34,6 +35,7 @@ namespace
         peer.bind( addr , port ) ;
         peer.listen( 1 ) ;
         auto source = peer.accept() ;
+        source.set_option( CWriteTimeout{ seconds{ 5 } } ) ;
         source.set_option( CReadTimeout{ seconds{ 5 } } ) ;
         CTransferTunnel_TCP::recv_stream( stream , source ) ;
     }
@@ -47,7 +49,7 @@ int main ( int args_num , char ** args ) try
         op_map { { "send" , send } , 
                  { "recv" , recv } } ;
     
-    if ( args_num < ARGS_NUM ) { std::cerr << "too few arguments" ;
+    if ( args_num < ARGS_NUM ) { std::cerr << "usage : general_test operation address port filename" ;
                                  return - 1 ; }
     
     try 

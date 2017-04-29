@@ -14,8 +14,7 @@ namespace filesystem
     // exceptions :
     //      CFilesystemException if an error occured.
     std::size_t file_size ( const char * ) ; 
-    
-    
+    std::size_t free_disk_mem () ;
     
     // parameter : 
     //       pointer to char array representing the path.
@@ -25,7 +24,7 @@ namespace filesystem
     //      CFilesystemException if an error occured
     void cd    ( const char * ) ;             
     void lock_file ( const char * ) ;
-    void unlock_file ( const char * ) noexcept ;
+    int unlock_file ( const char * ) noexcept ;
     
     void mkdir ( const char * ) ;
 
