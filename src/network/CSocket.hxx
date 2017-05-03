@@ -76,10 +76,10 @@ namespace tools
 
 namespace network 
 {
-    std::uint32_t htonl( std::uint32_t ) ;
-    std::uint16_t htons( std::uint16_t ) ;
-    std::uint32_t ntohl( std::uint32_t ) ;
-    std::uint16_t ntohs( std::uint16_t ) ;
+    std::uint32_t hton_l( std::uint32_t ) ;
+    std::uint16_t hton_s( std::uint16_t ) ;
+    std::uint32_t ntoh_l( std::uint32_t ) ;
+    std::uint16_t ntoh_s( std::uint16_t ) ;
     
     std::string resolve( const std::string& ) ; // optional
     

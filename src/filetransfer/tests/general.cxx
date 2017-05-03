@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <string>
 #include <exception>
+#include <memory>
 #include <fstream>
 
 #include "CTransferTunnel.hxx"
@@ -15,6 +16,7 @@ using namespace network::ip ;
 // usage :
 // general_test operation address port filename
 //
+
 
 namespace 
 {

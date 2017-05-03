@@ -3,7 +3,9 @@
 #include <exception>
 #include <memory>
 #include <utility>
+#include <functional>
 
+#include <iostream> // cerr, debug
 
 #include "Types.hxx"
 #include "CSocket.hxx"
@@ -16,50 +18,104 @@ namespace transfer_protocol
     void CTransferTunnel_TCP::to_network( CDataPackagePOD& data , std::uint32_t data_sz , std::uint8_t eof ) 
     {
         data.header.type = DATA ;
-        reinterpret_cast< std::uint32_t& >( data.size ) = network::htonl( data_sz ) ;
+        reinterpret_cast< std::uint32_t& >( data.size ) = network::hton_l( data_sz ) ;
         data.eof  = eof ; 
     }
     
     void CTransferTunnel_TCP::from_network( const CDataPackagePOD& data , std::uint32_t& data_sz , std::uint8_t& eof ) 
     {
-        data_sz = network::ntohl( reinterpret_cast< const std::uint32_t& >( data.size ) ) ;
+        data_sz = network::ntoh_l( reinterpret_cast< const std::uint32_t& >( data.size ) ) ;
         eof     = data.eof ; 
     }
-    
-    void CTransferTunnel_TCP::to_network( CJumpPackagePOD& jump , network::ip::port_type port ) 
-    {
-        jump.header.type = JUMP_PACKAGE ;
-        reinterpret_cast< std::uint16_t& >( jump.port ) = network::htons( port ) ;
-    }
-    
-    void CTransferTunnel_TCP::from_network( const CJumpPackagePOD& jump , network::ip::port_type& port ) 
-    {
-        port = network::ntohs( reinterpret_cast< const std::uint16_t& >( jump.port ) ) ;
-    }
+
     
     namespace
     {
-        void send_data_pack( transfer_protocol::CTransferTunnel_TCP::CDataPackagePOD const * pack ,
-                             network::ip::CSocket& peer )
+        enum Polynom32 : std::uint32_t
+        { 
+            ETHERNET = 0x04C11DB7
+        } ;
+
+        // references : [1] http://www.zlib.net/crc_v3.txt, 
+        //              [2] http://create.stephan-brumme.com/crc32/ 
+        //              [3] https://www.cs.jhu.edu/~scheideler/courses/600.344_S02/CRC.html 
+        //              [4] https://en.wikipedia.org/wiki/Mathematics_of_cyclic_redundancy_checks
+        std::uint32_t crc32 ( const std::uint8_t * const data , std::size_t sz )
+        { // note it doesn't implement any standard, just for simple check
+            enum { BITS_IN_BYTE = 8 } ;
+            enum { POLY = ETHERNET } ;
+            
+            std::uint32_t acc = 0 ; 
+            
+            // division [1]
+            for ( std::uint8_t const * current = data ; 
+                current < data + sz ; 
+                ++ current )
+            {
+                acc ^= * current ; // XOR-add/sub 
+                
+                for ( std::uint8_t each_bit = BITS_IN_BYTE ; each_bit ; -- each_bit ) // TODO : table approach
+                {
+                    acc = ( acc >> 1 ) /* reversed bit order, really doesn't matter here; both recv and send are doing same thing on the same level */ 
+                                    ^ ( ( acc & 1 ) * POLY ) /*  if ( reversed >= poly_part ) then ( reversed - poly )
+                                                                    ( note that >= and - are operators of non-carry arithmetic [1] ) ) */ ;
+                }
+            }
+            return acc ;
+        }
+
+        
+        void send_data_pack( transfer_protocol::CTransferTunnel_TCP::CDataPackagePOD * pack ,
+                             network::ip::CSocket& peer , 
+                             unsigned long attempts = transfer_protocol::CTransferTunnel_TCP::ADDITIONAL_TRANSFER_ATTEMPTS )
         {
             using namespace network::ip ;
-            std::size_t written ;
-            peer.write_all( ( const std::uint8_t * ) pack , sizeof * pack , written ) ;  
-            CHeaderPOD remote_is_done ; // rename
-            peer.read( ( std::uint8_t * ) &remote_is_done , sizeof( CHeaderPOD ) ) ; // 1 byte pack
-            if ( remote_is_done.type == APPROVE ) return ;
-            throw std::logic_error( "Protocol Error : Receiver declined sent packs" ) ;
+            ( std::uint32_t& ) pack -> checksum = 0 ;
+            ( std::uint32_t& ) pack -> checksum = calc_checksum_hton( ( std::uint8_t * ) pack , sizeof * pack ) ;
+            
+            for ( ; ; -- attempts ) 
+            {
+                std::size_t written ;
+                peer.write_all( ( const std::uint8_t * ) pack , sizeof * pack , written ) ;  
+                CHeaderPOD remote_is_done ; // rename
+                peer.read( ( std::uint8_t * ) &remote_is_done , sizeof( CHeaderPOD ) ) ; // 1 byte pack
+                
+                if ( remote_is_done.type == APPROVE ) break ;
+                if ( ! attempts ) 
+                    throw CTransferException( "Error while transfering, checksum doesn't match" ) ;
+                std::cerr << "\npackage has been dropped" ; 
+            } 
         }
         
         void recv_data_pack( transfer_protocol::CTransferTunnel_TCP::CDataPackagePOD * pack ,
-                             network::ip::CSocket& peer )
+                             network::ip::CSocket& peer, 
+                             unsigned long attempts = transfer_protocol::CTransferTunnel_TCP::ADDITIONAL_TRANSFER_ATTEMPTS )
         {
             using namespace network::ip ;
-            peer.read( ( std::uint8_t * ) pack , sizeof * pack , { EReadFlags::WHAIT_ALL } ) ;
-            CHeaderPOD im_ready { APPROVE } ;
-            std::size_t written ;
-            peer.write_all( ( std::uint8_t * ) &im_ready , sizeof( CHeaderPOD ) , written ) ; // 1 byte pack
+            for ( ; ; -- attempts ) 
+            {
+                peer.read( ( std::uint8_t * ) pack , sizeof * pack , { EReadFlags::WHAIT_ALL } ) ;
+                
+                std::uint32_t remote_sum = reinterpret_cast< std::uint32_t& >( pack -> checksum ) ;
+                reinterpret_cast< std::uint32_t& >( pack -> checksum ) = 0 ;
+                std::uint32_t sum = calc_checksum_hton( ( std::uint8_t * ) pack , sizeof * pack ) ;
+                
+
+                CHeaderPOD im_ready { remote_sum == sum ? APPROVE : PACK_CANCEL } ;
+                std::size_t written ;
+                peer.write_all( ( const std::uint8_t * ) &im_ready , sizeof( CHeaderPOD ) , written ) ; // 1 byte pack
+                
+                if ( im_ready.type == APPROVE ) break ;
+                if ( ! attempts )
+                    throw CTransferException( "Error while transfering, checksum doesn't match" ) ;
+                std::cerr << "\npackage has been dropped" ; 
+            }
         }
+    }
+    
+    std::uint32_t calc_checksum_hton( const std::uint8_t * data , std::size_t sz )
+    {
+        return network::hton_l( crc32( data , sz ) ) ;
     }
     
     void CTransferTunnel_TCP::send_stream ( std::istream& stream , network::ip::CSocket& peer )
@@ -141,85 +197,6 @@ namespace transfer_protocol
             if ( eof ) return false ; 
         }
         return true ;
-    }
-
-    
-    void CTransferTunnel_TCP::send( std::istream& stream ,
-                                    const std::string& addr , 
-                                    const network::ip::port_type port ,
-                                    const std::size_t chunk_sz ) 
-    {
-         using namespace std::chrono ;
-         using namespace network::ip ;
-         
-         if ( ! chunk_sz )
-             throw std::invalid_argument( "chunk size cannot be zero" ) ;
-         
-         port_type current_port = port ;
-         
-         for ( ; ; ) 
-         {
-            CSocket peer { EAddressFamily::IPv4 , ESocketType::STREAM } ;
-         
-            peer.set_option( CWriteTimeout{ seconds{ TIMEOUT_SEC } } ) ;
-            peer.set_option( CReadTimeout { seconds{ TIMEOUT_SEC } } ) ;
-            
-            peer.connect( addr , current_port ) ; // assert( there is a listening current_port at addr ) ;
-            
-            if ( ! send_amount_from_stream( stream , peer , chunk_sz ) ) 
-            {
-                return ;
-            }
-            
-            CJumpPackagePOD jump ;
-            peer.read( ( std::uint8_t * )  &jump , sizeof jump , { EReadFlags::WHAIT_ALL } ) ;
-            from_network( jump , current_port ) ;  // TODO : next_addr
-         }
-    }
-    
-    void CTransferTunnel_TCP::receive( std::ostream& stream ,
-                                   const std::string& addr , 
-                                   const network::ip::port_type port ,
-                                   const std::size_t chunk_sz , 
-                                   unsigned short const delta_port ) 
-    {
-        using namespace std::chrono ;
-        using namespace network::ip ;
-        
-        CSocket peer { EAddressFamily::IPv4 , ESocketType::STREAM } ;
-        peer.bind( addr , port ) ;
-        peer.listen( CLIENT_QUEUE ) ;
-        
-        for ( port_type current_port = port ; ; )
-        {
-            auto source = peer.accept() ;
-            
-            source.set_option( CWriteTimeout{ seconds{ TIMEOUT_SEC } } ) ;
-            source.set_option( CReadTimeout { seconds{ TIMEOUT_SEC } } ) ;
-            
-            if ( ! recv_amount_to_stream( stream , source , chunk_sz ) ) 
-            {
-                return ;
-            }
-            
-            auto new_peer = CSocket{ EAddressFamily::IPv4 , ESocketType::STREAM } ;
-            
-            for ( unsigned attempt = 0 ; attempt < BIND_ATTEMPTS ; ++ attempt ) 
-                try { new_peer.bind( addr , current_port += delta_port ) ; }   
-                catch ( const CSocketBindException& ) {
-                    if ( attempt == BIND_ATTEMPTS ) throw ; 
-                    continue ;
-                }
-           
-           peer.listen( CLIENT_QUEUE ) ;
-           
-           CJumpPackagePOD jump ;
-           to_network( jump , current_port ) ;
-           std::size_t written ;
-           peer.write_all( ( std::uint8_t * ) &jump , sizeof jump , written ) ;
-           
-           peer = std::move( new_peer ) ;
-        }
     }
 }
 

@@ -165,13 +165,13 @@ namespace network
                     auto& ipaddr = reinterpret_cast< ::sockaddr_in & >( * addr ) ;
                     if ( inet_pton( AF_INET , addr_str , &ipaddr.sin_addr ) != 1 ) return false ;
                     ipaddr.sin_family = AF_INET ;
-                    ipaddr.sin_port  = ::htons( port ) ;
+                    ipaddr.sin_port  = htons( port ) ;
                 }
                 else {
                     auto& ip6addr = reinterpret_cast< ::sockaddr_in6 & >( * addr ) ;
                     if( inet_pton( AF_INET6 , addr_str , &ip6addr.sin6_addr ) != 1 ) return false ;
                     ip6addr.sin6_family = AF_INET6 ;
-                    ip6addr.sin6_port = ::htons( port ) ;
+                    ip6addr.sin6_port = htons( port ) ;
                 }
                 return true ;
             }
@@ -191,24 +191,24 @@ namespace
 }
 
 
-std::uint32_t network::htonl( std::uint32_t l )
+std::uint32_t network::hton_l( std::uint32_t l )
 {
-    return ::htonl( l ) ;
+    return htonl( l ) ;
 }
 
-std::uint16_t network::htons( std::uint16_t s )
+std::uint16_t network::hton_s( std::uint16_t s )
 {
-    return ::htons( s ) ;
+    return htons( s ) ;
 }
 
-std::uint32_t network::ntohl ( std::uint32_t l ) 
+std::uint32_t network::ntoh_l ( std::uint32_t l ) 
 {
-    return ::ntohl( l ) ;
+    return ntohl( l ) ;
 }
 
-std::uint16_t network::ntohs( std::uint16_t s )
+std::uint16_t network::ntoh_s( std::uint16_t s )
 {
-    return ::ntohs( s ) ;
+    return ntohs( s ) ;
 }
 
 struct network::ip::CSocket::CImplementation 
