@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iterator>
+#include <cctype>
 
 #include "CTransferTunnel.hxx"
 #include "CSocket.hxx"

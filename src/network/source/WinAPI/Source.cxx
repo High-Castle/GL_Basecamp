@@ -142,16 +142,16 @@ namespace network
                 return acc ;
             }
             
-            bool get_address( const ::sockaddr * addr , char * str_dst , port_type * port_dst , EAddressFamily * af_dst )
+            bool get_address( /* const */ ::sockaddr * addr , char * str_dst , port_type * port_dst , EAddressFamily * af_dst )
             {
                 if ( addr -> sa_family == AF_INET ) {
-                    auto& ipaddr = reinterpret_cast< const ::sockaddr_in & >( * addr ) ;
+                    auto& ipaddr = reinterpret_cast< /* const */ ::sockaddr_in & >( * addr ) ;
                     if ( inet_ntop( AF_INET , &ipaddr.sin_addr , str_dst , INET_ADDRSTRLEN ) == NULL ) return false ;
                     * af_dst   = EAddressFamily::IPv4 ;
                     * port_dst = ntohs( ipaddr.sin_port ) ;
                 }
                 else {
-                    auto& ip6addr = reinterpret_cast< const ::sockaddr_in6 & >( * addr ) ;
+                    auto& ip6addr = reinterpret_cast< /* const */ ::sockaddr_in6 & >( * addr ) ;
                     if ( inet_ntop( AF_INET6 , &ip6addr.sin6_addr , str_dst , INET6_ADDRSTRLEN ) == NULL ) return false ;
                     * af_dst   = EAddressFamily::IPv6 ;
                     * port_dst = ntohs( ip6addr.sin6_port ) ;
