@@ -2,11 +2,11 @@
 #define FILE_TRANSFER_FILESYSTEM_HXX
 
 #include <string>
-
+#include <exception>
 
 
 namespace filesystem_utility
-{ 
+{     
     std::string ls ( const char * ) ;
         
     // parameter : 
@@ -29,12 +29,13 @@ namespace filesystem_utility
     int  unlock_file ( const char * ) noexcept ;
 
     void mkdir ( const char * ) ;
+    
+    struct CFilesystemException : std::runtime_error // TODO
+    {
+        using runtime_error::runtime_error ;
+    } ;
 }
 
-struct CFilesystemException : CBasicException
-{
-    using CBasicException::CBasicException ;
-} ;
 
 
 #endif

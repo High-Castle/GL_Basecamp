@@ -12,7 +12,7 @@ if( WIN32 )
     set( CURRENT_IMPL "WinAPI" )
 elseif ( UNIX )
     set ( CURRENT_IMPL "POSIX" )
-   # set ( CMAKE_CXX_FLAGS "-pg -g3 -ggdb" ) # http://stackoverflow.com/questions/43747758/different-unexpected-errors-when-building-with-pg-option
+    set ( CMAKE_CXX_FLAGS "-Wall -pedantic -traditional-cpp" ) # -pg : http://stackoverflow.com/questions/43747758/different-unexpected-errors-when-building-with-pg-option
    # set ( CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -pg" )
 endif ()
 

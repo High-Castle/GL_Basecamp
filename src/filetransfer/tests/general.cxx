@@ -16,7 +16,8 @@ using namespace network::ip ;
 // usage :
 // general_test operation address port filename
 //
-
+enum { PACKAGE_SIZE = 1024 * 1024 * 20 } ;
+enum { TIMEOUT_SEC = 10 } ;
 
 namespace 
 {
@@ -25,9 +26,9 @@ namespace
         std::ifstream stream ( filename , std::ios_base::binary ) ;
         CSocket peer { EAddressFamily::IPv4 , ESocketType::STREAM } ;
         peer.connect( addr , port ) ;
-        peer.set_option( CWriteTimeout{ seconds{ 5 } } ) ;
-        peer.set_option( CReadTimeout{ seconds{ 5 } } ) ;
-        CTransferTunnel_TCP::send_stream( stream , peer ) ;
+        peer.set_option( CWriteTimeout{ seconds{ TIMEOUT_SEC } } ) ;
+        peer.set_option( CReadTimeout{ seconds{ TIMEOUT_SEC } } ) ;
+        CTransferTunnel_TCP::send_stream( stream , peer , PACKAGE_SIZE ) ;
     }
 
     void recv( const std::string& addr , port_type port , const std::string& filename )
@@ -37,9 +38,9 @@ namespace
         peer.bind( addr , port ) ;
         peer.listen( 1 ) ;
         auto source = peer.accept() ;
-        source.set_option( CWriteTimeout{ seconds{ 5 } } ) ;
-        source.set_option( CReadTimeout{ seconds{ 5 } } ) ;
-        CTransferTunnel_TCP::recv_stream( stream , source ) ;
+        source.set_option( CWriteTimeout{ seconds{ TIMEOUT_SEC } } ) ;
+        source.set_option( CReadTimeout{ seconds{ TIMEOUT_SEC } } ) ;
+        CTransferTunnel_TCP::recv_stream( stream , source , PACKAGE_SIZE ) ;
     }
 }
 

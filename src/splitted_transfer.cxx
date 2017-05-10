@@ -2,291 +2,413 @@
 #include <chrono>
 #include <unordered_map>
 #include <string>
+#include <sstream>
 #include <exception>
 #include <fstream>
 
 #include "CTransferTunnel.hxx"
+#include "CSocket.hxx"
+#include "filesystem_utility.hxx"
 
 using namespace std::chrono ;
 using namespace transfer_protocol ;
 using namespace network::ip ;
 
-// 
-// usage :
-// general_test operation address port filename
-//
-
 namespace 
-{
-    
-    
-    struct Client final
-    {
-        struct ResposeFileRequest
-        {
-           unsigned char size [ 8 ] alignas( 8 ) ;
-           enum { OK , CANCEL } Status status ;
-        } ;
+{    
+    enum 
+    { 
+        MSG_PACK_SIZE = 256 ,
+        DATA_PACK_SIZE = 1024 * 1024 * 1 ,
+        CLIENT_QUEUE = 1 ,
         
-        void invite_and_play_with_server ( const std::string& addr , port_type port )
+    } ;
+
+    enum 
+    {
+       BIND_ATTEMPTS = 3 ,
+       TIMEOUT_SEC = 10 
+    } ;
+    
+    template < class T >
+    void unpack_stream( std::istream& stream , T& curr ) {
+        stream >> curr ;
+        if ( stream.fail() )
+            throw std::invalid_argument( "Error while unpacking stream" ) ;
+    }
+    
+    void unpack_stream( std::istream& stream ) {}
+    
+    template < class T , class... Args > 
+    void unpack_stream ( std::istream& stream , T& curr , Args&... args ) {
+        stream >> curr ; 
+        if ( stream.fail() )
+            throw std::invalid_argument( "Error while unpacking stream" ) ;
+        unpack_stream( stream , args... ) ;
+    }
+    
+    void msg_to_peer ( CSocket& peer , const std::string& line ) {
+        std::istringstream sstream ( line ) ;
+        CTransferTunnel_TCP::send_stream( sstream , peer , MSG_PACK_SIZE ) ;
+    }
+    
+    template< class... Args >
+    void msg_from_peer( CSocket& peer , Args&... out_args ) {
+        std::stringstream sstream ;
+        CTransferTunnel_TCP::recv_stream( sstream , peer , MSG_PACK_SIZE ) ;
+        unpack_stream( sstream , out_args... ) ;
+    }
+
+    struct CSessionEnd final : std::exception 
+    { 
+    } ;
+
+    struct ClientScript final
+    {    
+        void invite_and_play_with_server ( const std::string& addr , port_type port ) 
         {
             CSocket cmd_socket { EAddressFamily::IPv4 , ESocketType::STREAM } ;
             cmd_socket.connect( addr , port ) ;
-            cmd_socket.set_option( CWriteTimeout{ seconds{ 5 } } ) ;
+            cmd_socket.set_option( CWriteTimeout{ seconds{ TIMEOUT_SEC } } ) ;
             
             std::stringstream line ;
+            
             while ( true ) try
             {
-                CTransferTunnel_TCP::recv_stream( line , cmd_socket ) ;
-                interpret( line ,  ) ;
-                
-            }
-            catch ( const CSocketException& ) {
-                
+                line.clear() ;
+                line.str( "" ) ;
+                CTransferTunnel_TCP::recv_stream( line , cmd_socket , MSG_PACK_SIZE ) ;
+                interpret( line , cmd_socket ) ;
             }
             catch ( const CSessionEnd& ) {
-                
+                std::cout << "\nsession end" ;
+                break ;
             }
         }
         
         private :
-            void interpret ( std::istringstream& line_stream , std::ostream& out , CSocket& cmd_socket )
-            {
-                std::string cmd ; line_stream >> cmd ;
-                try { operations.at( line_stream , out , cmd_socket ) ; } 
-                catch ( const std::out_of_range& ) {
-                    out << "Error : no such a command : " << cmd << std::flush ;
+
+            void interpret ( std::stringstream& line_stream , CSocket& cmd_socket )  
+            {    
+                std::string cmd ; 
+                unpack_stream( line_stream , cmd ) ;   
+                try { interpreter_operations.at( cmd )( line_stream , cmd_socket ) ; } 
+                catch ( const std::out_of_range& e ) {
+                    msg_to_peer( cmd_socket , "Error : no such a command : " + cmd ) ; 
+                    std::cout << "Error : no such a command : " << cmd << std::flush ;
+                }
+                catch ( const std::invalid_argument& e ) {
+                    msg_to_peer( cmd_socket , e.what() ) ; 
+                    std::cout << "\n" << e.what() << std::flush ;
+                }
+                catch( filesystem_utility::CFilesystemException const& e ) { 
+                    msg_to_peer( cmd_socket , e.what() ) ; 
+                    std::cerr << "\n" << e.what() << std::flush ; 
                 }
             }
             
-            const std::unordered_map< std::string , void (*) ( std::istringstream& , std::ostream& , CSocket& ) > 
-                interpreter_operations { { "ls" , ls } ,
+            const std::unordered_map< std::string , void (*) ( std::stringstream&  , CSocket& ) > 
+                interpreter_operations { { "cd" , cd } ,
+                                         { "ls" , ls } ,
                                          { "getfile" , getfile } ,
-                                         { "ls" , text_cmd } } ; 
-    } ;
-    
-    struct CJumpPackagePOD 
-    {
-        CHeaderPOD header ;
-        unsigned char padding_[ 1 ] ;
-        unsigned char port [ 2 ] alignas( 2 ) ;
-    } ;
-    
-    void to_network( CJumpPackagePOD& jump , network::ip::port_type port ) ;
-    void from_network( const CJumpPackagePOD& jump , network::ip::port_type& port ) ;
-    
-    void send( std::istream& stream ,
-               const std::string& addr , 
-               const network::ip::port_type port ,
-               const std::size_t chunk_sz ,
-               std::function< void( std::size_t ) > chunk_sent_callback ) 
-    {
-         using namespace std::chrono ;
-         using namespace network::ip ;
-         
-         if ( ! chunk_sz )
-             throw std::invalid_argument( "chunk size cannot be zero" ) ;
-         
-         port_type current_port = port ;
-         
-         for ( ; ; ) 
-         {
-            CSocket peer { EAddressFamily::IPv4 , ESocketType::STREAM } ;
-         
-            peer.set_option( CWriteTimeout{ seconds{ TIMEOUT_SEC } } ) ;
-            peer.set_option( CReadTimeout { seconds{ TIMEOUT_SEC } } ) ;
+                                         { "disconnect" , disconnect } } ; 
             
-            peer.connect( addr , current_port ) ; // assert( there is a listening current_port at addr ) ;
-            
-            if ( ! send_amount_from_stream( stream , peer , chunk_sz ) ) 
+            static void cd ( std::stringstream& args , CSocket& peer )
             {
-                chunk_sent_callback() ;
-                return ;
+                std::string path ;
+                unpack_stream( args , path ) ;
+                filesystem_utility::cd( path.c_str() ) ;
+                msg_to_peer( peer , "directory changed" ) ; 
+            }
+                                         
+            static void ls ( std::stringstream& args , CSocket& peer )
+            {
+                std::string path ;
+                unpack_stream( args , path ) ;
+                std::cerr << "\ndoing ls " << path ; 
+                auto entries = filesystem_utility::ls( path.c_str() ) ;
+                std::cerr << "\nsending..." ;
+                msg_to_peer( peer , entries ) ; 
+                std::cerr << "\nls sent" ; 
             }
             
-            chunk_sent_callback() ;
-            CJumpPackagePOD jump ;
-            peer.read( ( std::uint8_t * )  &jump , sizeof jump , { EReadFlags::WHAIT_ALL } ) ;
-            from_network( jump , current_port ) ;  // TODO : next_addr
-         }
-    }
-    
-    void receive( std::ostream& stream ,
-                  network::ip::CSocket peer ,
-                  const std::size_t chunk_sz , 
-                  std::function< network::ip::port_type( network::ip::port_type ) > next_port
-                  std::function< void( std::size_t ) > chunk_recveived_callback ) 
-    {
-        using namespace std::chrono ;
-        using namespace network::ip ;
-        
-        std::string addr = peer.bound_address().address() ;
-        port_type current_port = peer.bound_address().port() ;
-        
-        for ( ; ; )
-        {
-            auto source = peer.accept() ;
-            
-            source.set_option( CWriteTimeout{ seconds{ TIMEOUT_SEC } } ) ;
-            source.set_option( CReadTimeout { seconds{ TIMEOUT_SEC } } ) ;
-            
-            if ( ! recv_amount_to_stream( stream , source , chunk_sz ) ) 
-            {
-                chunk_recveived_callback() ;
-                return ;
+            static void disconnect ( std::stringstream& , CSocket& ) 
+            { 
+                throw CSessionEnd () ; 
             }
             
-            chunck_received_callback() ;
-            
-            auto new_peer = CSocket{ EAddressFamily::IPv4 , ESocketType::STREAM } ;
-            
-            for ( unsigned attempt = 0 ; attempt < BIND_ATTEMPTS ; ++ attempt ) 
-                try { new_peer.bind( addr , current_port = next_port( current_port ) ) ; }   
-                catch ( const CSocketBindException& ) {
-                    if ( attempt == BIND_ATTEMPTS ) throw ; 
-                    continue ;
+            static void getfile( std::stringstream& args_stream , CSocket& peer_cmd ) 
+            {
+                using namespace std::chrono ;
+                using namespace network::ip ;
+                std::cerr << "\nstarting " << __func__ ;
+                std::string fname ;
+                port_type current_port ;
+                std::size_t chunk_sz ;
+                
+                unpack_stream( args_stream , fname , current_port ) ;
+                
+                std::size_t file_sz = filesystem_utility::file_size( fname.c_str() ) ;
+                std::ifstream infile ( fname , std::ios_base::binary ) ;
+                
+                msg_to_peer( peer_cmd , std::to_string( infile.good() ) + " " + std::to_string( file_sz ) ) ;
+                
+                if ( ! infile.good() )
+                    throw std::invalid_argument( "cannot open " + fname + " locally" ) ;
+                
+                msg_from_peer( peer_cmd , chunk_sz ) ;
+                
+                if ( ! chunk_sz )
+                    throw std::invalid_argument( "chunk size cannot be zero" ) ;
+                
+                std::string addr = peer_cmd.remote_endpoint().address() ; 
+                
+                for ( ; ; ) 
+                {
+                    CSocket peer { EAddressFamily::IPv4 , ESocketType::STREAM } ;
+                
+                    peer.set_option( CWriteTimeout{ seconds{ TIMEOUT_SEC } } ) ;
+                    peer.set_option( CReadTimeout { seconds{ TIMEOUT_SEC } } ) ;
+                    
+                    peer.connect( addr , current_port ) ; // assert( there is a listening current_port at addr ) ;
+                    
+                    if ( ! CTransferTunnel_TCP::send_amount_from_stream( infile , peer , chunk_sz , DATA_PACK_SIZE ) ) 
+                    {
+                        break ;
+                    }
+                    
+                    msg_from_peer( peer , current_port ) ;
+                    std::cerr << "\nnext port is " << current_port ;
                 }
-           
-           peer.listen( CLIENT_QUEUE ) ;
-           
-           CJumpPackagePOD jump ;
-           to_network( jump , current_port ) ;
-           std::size_t written ;
-           peer.write_all( ( std::uint8_t * ) &jump , sizeof jump , written ) ;
-           
-           peer = std::move( new_peer ) ;
-        }
-    }
+                std::cerr << "\nfile " << fname << " sent" ;
+            }
+            
+    } ;
     
-    
-    
-    struct Server final
+    struct ServerScript final
     {
-        void serve ( const std::string& addr , port_type port )
+        void serve ( const std::string& addr , port_type port ) const
         {    
             CSocket server { EAddressFamily::IPv4 , ESocketType::STREAM } ;
             
             server.bind( addr , port ) ;
             server.listen( 1 ) ;
             
-            std::istringstream sstream ;
-            sstream.exceptions( std::ifstream::failbit | std::ifstream::badbit ) ;
+            std::stringstream sstream( std::ios_base::in | std::ios_base::out | std::ios_base::app ) ;
+           // sstream.exceptions( std::ifstream::failbit | std::ifstream::badbit ) ;
             
             while ( true ) try  // add mth.
             {
+                std::cin.clear() ;
                 auto cmd_socket = server.accept() ; // ctrl C
                 cmd_socket.set_option( CReadTimeout{ seconds{ 5 } } ) ;
                 
-                { auto addr = cmd_socket.remote_endpoint() ;
-                  std::cout << addr.address() << ":" << addr.port() << " connected\n" << std::flush ; }
+                auto addr = cmd_socket.remote_endpoint() ;
+                std::cout << addr.address() << ":" << addr.port() << " connected" << std::endl ;
                 
                 std::string cmd ;
-                while ( std::getline( cmd , std::cin ) )
+                std::cout << "\n>: " << std::flush ;
+                while ( std::getline( std::cin , cmd ) )
                 {
-                    sstream.str( cmd ) ;
-                    interpret( sstream , std::cout , cmd_socket ) ;
                     sstream.clear() ;
+                    sstream.str( cmd ) ;
+                    interpret( sstream , cmd_socket ) ;
+                    std::cout << "\n>: " << std::flush ;
                 }
-                
-                sstream.clear() ;
-                std::cin.clear() ; // for EOF and other different 
-            }
-            catch ( const CSocketException& e )
-            {
-                std::cerr << "Client disconnected unexpectfully.\nReason : \"" << e.what() << "\"" ;
-            }
+            }   
+                catch ( const CSocketException& e ) 
+                {
+                    std::cerr << "Client disconnected unexpectfully.\nReason : \"" << e.what() << "\"" ;
+                }
+                catch ( const CSessionEnd& ) 
+                { 
+                    break ;
+                }
         }
         
         private :
             
-            void interpret ( std::istringstream& line_stream , std::ostream& out , CSocket& cmd_socket )
+            void interpret ( std::stringstream& line_stream , CSocket& cmd_socket ) const
             {
                 std::string cmd ; line_stream >> cmd ;
-                try { operations.at( line_stream , out , cmd_socket ) ; } 
-                catch ( const std::out_of_range& ) {
-                    out << "Error : no such a command : " << cmd ;
+                try { operations.at( cmd )( line_stream , cmd_socket ) ; } 
+                catch ( const filesystem_utility::CFilesystemException& e )
+                {
+                    std::cout << "\n" << e.what() << std::flush ; 
                 }
-                catch ( const std::ios_base::failure& e ) { 
-                    out << "bad arguments to " + cmd ;
+                catch ( const std::out_of_range& ) {
+                    std::cout << "Error : no such a command : " << cmd << std::endl ;
+                }
+                catch ( const std::invalid_argument& e ) {
+                    std::cout << "Argument Error : " << e.what() ;
                 }
             }
             
-            static void getfile( std::istringstream& args_stream , std::ostream& out , CSocket& peer_cmd ) 
+            static void getfile( std::stringstream& args_stream , CSocket& peer_cmd ) 
             {
+                using namespace network::ip ;
+                std::cerr << "\nstarting \"getfile\"" ;
+                
                 char tmp_suffix [ L_tmpnam ] = "temporary" ;
-                std::tmpnam( tmp_suffix ) ;
                 
-                network::ip::port_type start_port ;
-                std::string fname ; 
+                port_type start_port   ; std::string fname ; 
+                std::size_t chunk_size ; float percents    ;
+                std::size_t file_size  ; bool status       ;
+                port_type port_delta   ;
                 
-                args_stream >> fname >> start_port >> port_delta ;
+                unpack_stream( args_stream , fname , start_port , port_delta , percents ) ;
+                
+                if ( percents > 100 ) 
+                    throw std::invalid_argument( "bad percent : " + std::to_string( percents ) ) ;
+                
+                //std::tmpnam( tmp_suffix ) ;
                 const std::string tmp_name = fname + "_" + tmp_suffix ;
                 
-                std::size_t chunk_size ;
-
-                {   
-                    std::size_t file_size ;
-                    bool status ;
-
-                    { std::istringstream request ( "getfile " + fname + " " + std::to_string( start_port ) ) ;
-                      CTransferTunnel_TCP::send_stream( request , peer_cmd ) ; }
-
-                    { std::stringstream response ;
-                      CTransferTunnel_TCP::recv_stream( response , peer_cmd ) ;
-                      response >> status >> file_size ; 
-                      if ( response.fail() ) ; }
-                      
-                    chunk_size = file_size * 0.1 ;
-                }
+                std::cerr << "\ntriggering client to send operation..." ;
+                msg_to_peer( peer_cmd , "getfile " + fname + " " + std::to_string( start_port ) ) ;
+                std::cerr << " ok\ngetting requested file size..." ;
+                msg_from_peer( peer_cmd , status , file_size ) ;
+                std::cerr << " " << file_size ;
                 
-                { 
-                    CSocket local_peer { EAddressFamily::IPv4 , ESocketType::STREAM } ;
-                    local_peer.bind( peer_cmd.bound_address().address() , start_port ) ;
-                    local_peer.listen( CLIENT_QUEUE ) ;
+                if ( ! status )
+                    throw std::invalid_argument( "client declined request to send" ) ;
+                
+                std::cerr << "\nport delta is " << port_delta ;
+                std::cerr << "\npercents of whole size are " << percents ;
+                
+                chunk_size = ( file_size ? file_size * ( percents / 100.f ) : 1 ) ;
+                std::cerr << "\nchunk size is " << chunk_size ; 
+                
+                std::cerr << "\ncreate listening socket..." ; 
+                CSocket connector_peer { EAddressFamily::IPv4 , ESocketType::STREAM } ;
+                connector_peer.bind( peer_cmd.bound_address().address() , start_port ) ;
+                connector_peer.listen( CLIENT_QUEUE ) ;
+                std::cerr << " created" ;
+                
+                std::string addr = peer_cmd.bound_address().address() ;
+                port_type current_port = peer_cmd.bound_address().port() ;
+                
+                std::cerr << "\nsending chunk size to client..." ;
+                msg_to_peer( peer_cmd , std::to_string( chunk_size ) ) ;
+                std::cerr << " sent" ;
+                
+                std::cerr << "\nopening file..." ;
+                std::ofstream fileout ( tmp_name , std::ios_base::binary ) ;
+                std::cerr << " open" ;
+                
+                std::cout << "\nstarting a transfer of \"" << fname << "\"" << std::endl ; 
+                std::cerr << "\nstarting transfer" ;
+                
+                for ( std::size_t chunk_num = 0 ; ;  )
+                {
+                    auto source = connector_peer.accept() ;
                     
-                    { std::istringstream approve ( "i'm ready to accept your sender" ) ;
-                      CTransferTunnel_TCP::send_stream( approve , peer_cmd ) ; }
+                    source.set_option( CWriteTimeout{ seconds{ TIMEOUT_SEC } } ) ;
+                    source.set_option( CReadTimeout { seconds{ TIMEOUT_SEC } } ) ;
                     
-                    auto next_port = [ port_delta ] ( port_type port ) { return port + port_delta ; } ;
-                    auto print_progress = [ out& ] ( std::size_t chunk_num ) { out << ( chunk_num * 10 ) << "%" << "\r    \r"  ; } ;
-                    std::ofstream fileout ( tmp_name , peer , std::ios_base::binary ) ;
-                    std::cout << "starting a transfer of \"" << fname << std::endl ; 
-                    CTransferTunnel_TCP::recv( fileout , std::move( local_peer ) , chunk_size , next_port , print_progress ) ; 
+                    if ( ! CTransferTunnel_TCP::recv_amount_to_stream( fileout , source , chunk_size , DATA_PACK_SIZE ) ) 
+                    {
+                        break ;
+                    }
+                    std::cout << "\n" << ( ++ chunk_num * percents ) << "% "  << std::flush ;
+                    
+                    CSocket new_peer { EAddressFamily::IPv4 , ESocketType::STREAM } ;
+                    
+                    for ( unsigned attempt = 0 ; ; ) 
+                    {
+                        try 
+                        { 
+                            current_port += port_delta ;
+                            new_peer.bind( addr , current_port ) ; 
+                            break ;
+                        }   
+                        catch ( const CSocketBindException& ) {
+                            ++ attempt ;
+                            std::cerr << "\nattempt to bind port " << current_port << " failed" ;
+                            if ( attempt == BIND_ATTEMPTS ) throw ; 
+                        }
+                    }
+                    
+                    new_peer.listen( CLIENT_QUEUE ) ;
+                    
+                    std::cerr << "\nsending next port to client..." ;
+                    msg_to_peer( source , std::to_string( current_port ) ) ;
+                    std::cerr << "sent" ;
+                    
+                    connector_peer = std::move( new_peer ) ;
                 }
                 
                 int result = std::rename( tmp_name.c_str() , fname.c_str() ) ;
-                out << "\nfile was saved to " << ( ! result ? fname : tmp_name ) << std::flush ;
+                std::cout << "\nfile was saved to " << ( ! result ? fname : tmp_name ) << std::flush ;
+                std::cerr << "\ntransfered" ;
             } 
-                
-            const std::unordered_map< std::string , void (*) ( std::istringstream& , std::ostream& , CSocket& ) > 
-                operations { { "cd" , { cd } } ,
+            
+            static void ls ( std::stringstream& args , CSocket& peer )
+            {
+                std::string path ;
+                unpack_stream( args , path ) ;
+                std::cout << filesystem_utility::ls( path.c_str() ) << std::flush ; 
+            }
+            
+            static void end_session ( std::stringstream& , CSocket& ) { 
+                throw CSessionEnd () ; 
+            }
+            
+            static void client_cmd ( std::stringstream& line , CSocket& peer )
+            {
+                CTransferTunnel_TCP::send_stream( line , peer , MSG_PACK_SIZE ) ;
+                CTransferTunnel_TCP::recv_stream( std::cout , peer , MSG_PACK_SIZE ) ;
+            }
+            
+            static void cd ( std::stringstream& args , CSocket& )
+            {
+                std::string str ;
+                unpack_stream( args , str ) ;
+                filesystem_utility::cd( str.c_str() ) ;
+            } ;
+            
+            static void help ( std::stringstream& args , CSocket& )
+            {
+                std::cout << "\nusage :"
+                             "\n    >: client getfile FILENAME initial_port port_delta percents" ;
+            }
+            
+            const std::unordered_map< std::string , void (*) ( std::stringstream& , CSocket& ) > 
+                operations { { "cd" , cd } ,
                              { "getfile" , getfile } ,
-                             { "ls" , ls } 
-                             { "client" , client_cmd } 
-                             { "disconnect" , disconnect } } ;
+                             { "ls" , ls } ,
+                             { "client" , client_cmd } ,
+                             { "!q" , end_session } ,
+                             { "!help" , help }
+                } ;         
     } ;
 }
 
+
+// usage :
+
+
+
 int main ( int args_num , char ** args ) try
 {
-    enum ARGS { OPERATION = 1 , ADDRESS , PORT , FNAME , DIR_PATH = FNAME , ARGS_NUM } ;
+    enum ARGS { OPERATION = 1 , ADDRESS , PORT , FNAME , DIR_PATH = FNAME , ARGS_NUM = DIR_PATH } ;
     
     std::cout.sync_with_stdio( false ) ;
     std::cin.sync_with_stdio( false ) ;
     
-    if ( args_num < ARGS_NUM ) { std::cerr << "usage : splitted_file_transfer server address port\n"
-                                               "\tsplited_transfer client address port" ;
+    if ( args_num < ARGS_NUM ) { std::cerr << "usage : splitted_transfer server address port\n"
+                                               "\tsplitted_transfer client address port" ;
                                  return - 1 ; }
                 
-    std::string operation ( args[ 0 ] ) ;
+    std::string operation ( args[ OPERATION ] ) ;
     
     if ( operation == "server" )
     {
-        Server().serve( args[ ADDRESS ] , std::stoi( args[ PORT ] ) ) ) ; 
+        ServerScript().serve( args[ ADDRESS ] , std::stoi( args[ PORT ] ) )  ; 
     }
     else if ( operation == "client" )
     {
-        Client().invite_and_play_with_server( args[ ADDRESS ] , std::stoi( args[ PORT ] ) ) ;
+        ClientScript().invite_and_play_with_server( args[ ADDRESS ] , std::stoi( args[ PORT ] ) ) ;
     }
     else 
     {

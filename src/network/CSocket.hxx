@@ -139,11 +139,11 @@ namespace network
 
             void connect ( const std::string& address , port_type port ) ;
             
-            std::size_t write ( const std::uint8_t * src , std::size_t sz , std::initializer_list< EWriteFlags > = {} ) ;
-            std::size_t read  ( std::uint8_t * dst , std::size_t sz , std::initializer_list< EReadFlags > = {} ) ;
+            std::size_t write ( const unsigned char * src , std::size_t sz , std::initializer_list< EWriteFlags > = {} ) ;
+            std::size_t read  ( unsigned char * dst , std::size_t sz , std::initializer_list< EReadFlags > = {} ) ;
             
             // guaranties, that all data will be sent.
-            void write_all ( const std::uint8_t * , std::size_t , std::size_t& , std::initializer_list< EWriteFlags > = {} ) ;
+            void write_all ( const unsigned char * , std::size_t , std::size_t& , std::initializer_list< EWriteFlags > = {} ) ;
             void write_all ( const std::string& , std::size_t& , std::initializer_list< EWriteFlags > flags = {} ) ;
             
             void set_option( const struct ISocketOption& option ) ,

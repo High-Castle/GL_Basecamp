@@ -148,13 +148,13 @@ namespace network
                     auto& ipaddr = reinterpret_cast< const ::sockaddr_in & >( * addr ) ;
                     if ( inet_ntop( AF_INET , &ipaddr.sin_addr , str_dst , INET_ADDRSTRLEN ) == NULL ) return false ;
                     * af_dst   = EAddressFamily::IPv4 ;
-                    * port_dst = ::ntohs( ipaddr.sin_port ) ;
+                    * port_dst = ntohs( ipaddr.sin_port ) ;
                 }
                 else {
                     auto& ip6addr = reinterpret_cast< const ::sockaddr_in6 & >( * addr ) ;
                     if ( inet_ntop( AF_INET6 , &ip6addr.sin6_addr , str_dst , INET6_ADDRSTRLEN ) == NULL ) return false ;
                     * af_dst   = EAddressFamily::IPv6 ;
-                    * port_dst = ::ntohs( ip6addr.sin6_port ) ;
+                    * port_dst = ntohs( ip6addr.sin6_port ) ;
                 }
                 return true ;
             }
@@ -551,7 +551,7 @@ namespace ip {
     
     namespace 
     {
-        std::size_t no_checks_write ( sock_handle_type sock , const std::uint8_t * src , std::size_t sz , int flg_mask )
+        std::size_t no_checks_write ( sock_handle_type sock , const unsigned char * src , std::size_t sz , int flg_mask )
         {
             ::ssize_t bytes_written = ::send( sock , reinterpret_cast< const char * >( src ) , sz , flg_mask ) ;
         
@@ -576,7 +576,7 @@ namespace ip {
             return bytes_written ;
         }    
         
-        std::size_t no_checks_read ( sock_handle_type sock , std::uint8_t * dst , std::size_t sz , int flg_mask )
+        std::size_t no_checks_read ( sock_handle_type sock , unsigned char * dst , std::size_t sz , int flg_mask )
         {
             ::ssize_t bytes_read = ::recv( sock , reinterpret_cast< char * >( dst ) , sz , flg_mask ) ;
         
@@ -607,7 +607,7 @@ namespace ip {
         }
     }
     
-    std::size_t CSocket::write ( const std::uint8_t * src , std::size_t sz , std::initializer_list< EWriteFlags > flags )
+    std::size_t CSocket::write ( const unsigned char * src , std::size_t sz , std::initializer_list< EWriteFlags > flags )
     {
         if ( ! is_connected() ) 
             throw CSocketLogicException( "Logic Error on write, socket is not connected" ) ;
@@ -615,7 +615,7 @@ namespace ip {
         return no_checks_write( impl() -> sock_ , src , sz , flg_mask ) ;
     }
 
-    std::size_t CSocket::read ( std::uint8_t * dst , std::size_t sz , std::initializer_list< EReadFlags > flags )
+    std::size_t CSocket::read ( unsigned char * dst , std::size_t sz , std::initializer_list< EReadFlags > flags )
     {
         if ( ! is_bound() ) 
             throw CSocketLogicException( "Logic Error on read, socket is not bound" )  ;
@@ -707,7 +707,7 @@ namespace ip {
             std::cerr << "cerr : " << __func__ << " : shutdown failed" ;
     }
     
-    void CSocket::write_all ( const std::uint8_t * src , const std::size_t buff_size , std::size_t& written , std::initializer_list< EWriteFlags > flags )
+    void CSocket::write_all ( const unsigned char * src , const std::size_t buff_size , std::size_t& written , std::initializer_list< EWriteFlags > flags )
     {
         if ( ! is_connected() ) 
             throw CSocketLogicException( null_error ) ;
@@ -724,7 +724,7 @@ namespace ip {
   
     void CSocket::write_all ( const std::string& str , std::size_t& written , std::initializer_list< EWriteFlags > flags )
     {
-        return write_all( reinterpret_cast< const std::uint8_t * >( str.c_str() ) , str.length() + 1 , written , flags ) ;
+        return write_all( reinterpret_cast< const unsigned char * >( str.c_str() ) , str.length() + 1 , written , flags ) ;
     }
 
 } /* ip */ 
