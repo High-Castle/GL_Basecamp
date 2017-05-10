@@ -4,7 +4,9 @@
 #include <string>
 #include <sstream>
 #include <exception>
+#include <algorithm>
 #include <fstream>
+#include <iterator>
 
 #include "CTransferTunnel.hxx"
 #include "CSocket.hxx"
@@ -58,11 +60,17 @@ namespace
         CTransferTunnel_TCP::recv_stream( sstream , peer , MSG_PACK_SIZE ) ;
         unpack_stream( sstream , out_args... ) ;
     }
-
+    
+    void trim ( std::string& str )
+    {
+        str.erase( str.begin() , std::find_if( str.begin() , str.end() , [] ( char ch ) { return ! std::isspace( ch ) ; } ) ) ;
+        str.erase( std::find_if( str.rbegin() , str.rend() , [] ( char ch ) { return ! std::isspace( ch ) ; } ).base() , str.end() ) ;
+    }
+    
     struct CSessionEnd final : std::exception 
     { 
     } ;
-
+    
     struct ClientScript final
     {    
         void invite_and_play_with_server ( const std::string& addr , port_type port ) 
@@ -146,7 +154,11 @@ namespace
                 port_type current_port ;
                 std::size_t chunk_sz ;
                 
-                unpack_stream( args_stream , fname , current_port ) ;
+                unpack_stream( args_stream , current_port ) ;
+                
+                fname = std::string( std::istreambuf_iterator< char >{ args_stream } ,  
+                                     std::istreambuf_iterator< char >{ } ) ;
+                trim( fname ) ;
                 
                 std::size_t file_sz = filesystem_utility::file_size( fname.c_str() ) ;
                 std::ifstream infile ( fname , std::ios_base::binary ) ;
@@ -180,7 +192,7 @@ namespace
                     msg_from_peer( peer , current_port ) ;
                     std::cerr << "\nnext port is " << current_port ;
                 }
-                std::cerr << "\nfile " << fname << " sent" ;
+                std::cerr << "\nfile \"" << fname << "\" sent" ;
             }
             
     } ;
@@ -256,7 +268,11 @@ namespace
                 std::size_t file_size  ; bool status       ;
                 port_type port_delta   ;
                 
-                unpack_stream( args_stream , fname , start_port , port_delta , percents ) ;
+                unpack_stream( args_stream , start_port , port_delta , percents ) ;
+                
+                fname = std::string( std::istreambuf_iterator< char >{ args_stream } ,  
+                                     std::istreambuf_iterator< char >{ } ) ;
+                trim( fname ) ;
                 
                 if ( percents > 100 ) 
                     throw std::invalid_argument( "bad percent : " + std::to_string( percents ) ) ;
@@ -265,7 +281,7 @@ namespace
                 const std::string tmp_name = fname + "_" + tmp_suffix ;
                 
                 std::cerr << "\ntriggering client to send operation..." ;
-                msg_to_peer( peer_cmd , "getfile " + fname + " " + std::to_string( start_port ) ) ;
+                msg_to_peer( peer_cmd , "getfile " + std::to_string( start_port ) + " " + fname ) ;
                 std::cerr << " ok\ngetting requested file size..." ;
                 msg_from_peer( peer_cmd , status , file_size ) ;
                 std::cerr << " " << file_size ;
@@ -339,7 +355,7 @@ namespace
                 }
                 
                 int result = std::rename( tmp_name.c_str() , fname.c_str() ) ;
-                std::cout << "\nfile was saved to " << ( ! result ? fname : tmp_name ) << std::flush ;
+                std::cout << "\nfile was saved to \"" << ( ! result ? fname : tmp_name ) << "\"" << std::flush ;
                 std::cerr << "\ntransfered" ;
             } 
             
@@ -370,7 +386,9 @@ namespace
             static void help ( std::stringstream& args , CSocket& )
             {
                 std::cout << "\nusage :"
-                             "\n    >: client getfile FILENAME initial_port port_delta percents" ;
+                             "\n    >: getfile initial_port port_delta percents FILENAME"
+                             "\n    >: client ls path"
+                             "\n    >: ls path (local)" ;
             }
             
             const std::unordered_map< std::string , void (*) ( std::stringstream& , CSocket& ) > 
